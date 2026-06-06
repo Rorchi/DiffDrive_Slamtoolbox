@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+ <link name= "base_link">
+
+ </link>
+
+ <joint name="chassis_joint" type="fixed">
+   <parent link="base_link"/>
+   <child link="chassis"/>
+   <origin xyz="0.07 0 0"/>
+  </joint>
+
+  <link name="chassis">
+   <visual>
+    <origin xyz="-0.125 0 0.04"/>
+     <geometry>
+       <box size="0.250 0.16 0.08"/>
+     </geometry>
+     <material name="blue"/>
+   </visual>
+
+   <collision>
+     <origin xyz="-0.125 0 0.04"/>
+     <geometry>
+       <box size="0.250 0.16 0.08"/>
+     </geometry>
+   </collision>
+
+  </link>
+
+  <gazebo reference="chassis">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+
+
+
+             <!--Up Chassis-->
+ <joint name="up_chassis_joint" type="fixed">
+   <parent link="chassis"/>
+   <child link="up_chassis"/>
+   <origin xyz=" -0.135 0 0.11"/>
+  </joint>
+
+  <link name="up_chassis">
+   <visual>
+     <geometry>
+       <box size="0.15 0.13 0.06"/>
+     </geometry>
+     <material name="blue"/>
+   </visual>
+
+
+   <collision>
+     <geometry>
+       <box size="0.15 0.13 0.06"/>
+     </geometry>
+   </collision>
+
+  </link>
+  
+  <gazebo reference="up_chassis">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+
+   <!--Base_footprint Link-->
+  <joint name="base_footprint_joint" type="fixed">
+   <parent link="base_link"/>
+   <child link="base_footprint"/>
+   <origin xyz=" 0 0 0"/>
+  </joint>
+
+  <link name="base_footprint"></link>
+  
+ </robot>

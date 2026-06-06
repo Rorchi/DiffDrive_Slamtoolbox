@@ -1,0 +1,34 @@
+### bringup/config/ekf.yaml ###
+ekf_filter_node:
+  ros__parameters:
+    # Filtre çalışma frekansı (Hz)
+    frequency: 30.0
+    sensor_timeout: 0.1
+    two_d_mode: true # Kaşif Çelebi yer robotu olduğu için 2D mod yeterli
+    
+    # Koordinat çerçeveleri
+    map_frame: map              # SLAM tarafından yayınlanacak
+    odom_frame: odom            # EKF tarafından yayınlanacak
+    base_link_frame: base_link  # Robotun merkezi
+    world_frame: odom           # EKF'nin dünya referansı
+    
+
+    # 1. Kaynak: Tekerlek Odometrisi (Arduino Bridge)
+    odom0: /odom
+    odom0_config: [true,  true,  false, # x, y, z konumları (z kapalı)
+                   false, false, true,  # roll, pitch, yaw (sadece yaw açık)
+                   true,  false, false, # vx (ileri hız)
+                   false, false, true,  # vyaw (dönüş hızı)
+                   false, false, false]
+    odom0_relative: true # Başlangıç noktasını 0 kabul et
+
+    # 2. Kaynak: IMU
+    imu0: /imu/data
+    imu0_config: [false, false, false, # x, y, z konumları
+                  false, false, false,  # roll, pitch, yaw (yaw çok önemli)
+                  false, false, false, # vx, vy, vz hızları
+                  false, false, true,  # vroll, vpitch, vyaw (açısal hızlar)
+                  true,  false, false] # ax (ivme - sadece ileri ivme)
+    imu0_relative: true
+    # IMU'nun manyetik alanlardan etkilenmemesi için yerçekimi etkisini kaldır
+    imu0_remove_gravitational_acceleration: true
