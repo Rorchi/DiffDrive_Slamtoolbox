@@ -66,7 +66,7 @@ def generate_launch_description():
     delayed_slam = TimerAction(period=8.0, actions=[slam_launch])
 
     return LaunchDescription([
-        node_robot_state_publisher,
+        node_robot_state_publisher,  
         rplidar_launch,
         serial_bridge_node,
         image_proc_node,  

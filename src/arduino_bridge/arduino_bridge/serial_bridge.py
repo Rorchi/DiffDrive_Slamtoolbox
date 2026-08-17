@@ -7,7 +7,7 @@ import rclpy
 from rclpy.node import Node
 
 from std_msgs.msg import Float32
-from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Imu, JointState
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 
@@ -60,6 +60,12 @@ class SerialBridgeNode(Node):
         self.odom_pub = self.create_publisher(
             Odometry,
             '/odom',
+            10
+        )
+
+        self.joint_pub = self.create_publisher(
+            JointState,
+            '/joint_states',
             10
         )
 
@@ -258,6 +264,48 @@ class SerialBridgeNode(Node):
         self.oxygen_pub.publish(msg)
 
     # ==========================================================
+    # JOINT STATE PUBLISH
+    # ==========================================================
+
+
+    def publish_joint_states(self, stamp, left_enc, right_enc):
+
+        left_angle = (
+            left_enc * 2.0 * math.pi
+        ) / self.encoder_ticks_per_rev
+
+        right_angle = (
+            right_enc * 2.0 * math.pi
+        ) / self.encoder_ticks_per_rev
+
+        joint_msg = JointState()
+
+        joint_msg.header.stamp = stamp.to_msg()
+
+        joint_msg.name = [
+            'left_front_wheel_joint',
+            'right_front_wheel_joint',
+            'left_rear_wheel_joint',
+            'right_rear_wheel_joint'
+        ]
+
+        joint_msg.position = [
+            left_angle,
+            right_angle,
+            left_angle,
+            right_angle
+        ]
+
+        joint_msg.velocity = [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        ]
+
+        self.joint_pub.publish(joint_msg)
+
+    # ==========================================================
     # ODOMETRY
     # ==========================================================
 
@@ -265,6 +313,8 @@ class SerialBridgeNode(Node):
 
         left_enc = int(data.get('E1', 0))
         right_enc = int(data.get('E2', 0))
+        
+        self.publish_joint_states(stamp, left_enc, right_enc)
 
         if self.prev_left is None:
 
