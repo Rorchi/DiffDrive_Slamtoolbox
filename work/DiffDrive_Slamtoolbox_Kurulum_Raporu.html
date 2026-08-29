@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>DiffDrive Slamtoolbox Kurulum Raporu</title>
+  <style>
+    @page { size: A4; margin: 2cm; }
+    body { font-family: "Liberation Sans", Arial, sans-serif; color: #1e293b; line-height: 1.42; font-size: 10.5pt; }
+    h1 { color: #0f3d63; font-size: 24pt; margin-top: 70px; text-align: center; }
+    h2 { color: #0f3d63; font-size: 16pt; border-bottom: 1px solid #9fbad0; padding-bottom: 4px; margin-top: 26px; }
+    h3 { color: #1d5f8b; font-size: 12.5pt; margin-top: 18px; }
+    .cover { text-align: center; page-break-after: always; }
+    .subtitle { font-size: 14pt; color: #475569; margin: 18px auto; max-width: 540px; }
+    .meta { margin-top: 55px; color: #475569; }
+    .note { background: #edf6ff; border-left: 4px solid #3179ae; padding: 9px 12px; margin: 12px 0; }
+    .warn { background: #fff7e8; border-left: 4px solid #bd7a17; padding: 9px 12px; margin: 12px 0; }
+    .ok { background: #edf9f0; border-left: 4px solid #378650; padding: 9px 12px; margin: 12px 0; }
+    pre { background: #17212b; color: #e7eef6; padding: 10px; white-space: pre-wrap; font-family: "Liberation Mono", monospace; font-size: 8.7pt; }
+    code { font-family: "Liberation Mono", monospace; color: #8f2c1d; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0 15px; }
+    th { background: #dceaf5; color: #163d5b; }
+    th, td { border: 1px solid #b8c7d3; padding: 7px; vertical-align: top; }
+    ul, ol { padding-left: 24px; }
+    .small { font-size: 9pt; color: #475569; }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <h1>DiffDrive_Slamtoolbox<br>Donanım Altyapısı Kurulum Raporu</h1>
+    <p class="subtitle">Arduino Mega2560, IMU, enkoder odometrisi, RPLidar A1 ve ROS 2 Humble bringup altyapısı</p>
+    <p class="meta">Hazırlanma tarihi: 28 Ağustos 2026<br>Hedef bilgisayar: NVIDIA Jetson / Ubuntu<br>Çalışma alanı: <code>/home/orin/DiffDrive_Slamtoolbox</code></p>
+  </section>
+
+  <h2>1. Amaç ve kapsam</h2>
+  <p>Bu rapor, diferansiyel sürüşlü robotun Jetson üzerinde ROS 2 Humble ile çalışan temel donanım katmanını sıfırdan kurmak için hazırlanmıştır. Bu aşamada hedef; Arduino'dan IMU ve enkoder verisini almak, bunları ROS topic'lerine dönüştürmek, RPLidar A1 ile <code>/scan</code> yayınlamak ve iki bileşeni tek komutla başlatmaktır.</p>
+  <div class="ok"><strong>Tamamlanan altyapı:</strong> Arduino USB erişimi, sabit cihaz isimleri, seri-köprü ROS düğümü, IMU/odom/joint state yayınları, RPLidar sistem paketi ve <code>robot_bringup</code> paketi.</div>
+  <div class="note"><strong>Henüz yapılmayanlar:</strong> robot tanımı (URDF), TF ağacı, EKF, SLAM Toolbox ile haritalama, kaydedilmiş haritadan lokalizasyon, Nav2 navigasyonu ve kalıcı harita kayıt launch dosyaları. Bunlar sonraki aşamalardır; bu raporda yalnızca bunlara hazırlık yapan yapı açıklanır.</div>
+
+  <h2>2. Nihai proje düzeni</h2>
+  <pre>DiffDrive_Slamtoolbox/
+├── arduino/mega2560/              # Mega2560 firmware'i
+├── docs/
+│   ├── serial-protocol.md         # Arduino - Jetson veri sözleşmesi
+│   ├── rplidar.md                 # Lidar kurulumu ve testi
+│   └── robot_bringup.md           # Başlatma paketi notları
+├── scripts/usb_serial/
+│   ├── 99-kasif-usb-serial.rules  # Kalıcı /dev/arduino ve /dev/rplidar adları
+│   └── install_udev_rules.sh      # Udev kuralı kurulum yardımcısı
+├── src/
+│   ├── arduino_bridge/            # Seri JSON → ROS 2 topic köprüsü
+│   └── robot_bringup/             # Donanımı birlikte başlatan launch paketi
+├── build/                          # colcon üretimi; Git'e eklenmez
+├── install/                        # colcon üretimi; Git'e eklenmez
+├── log/                            # colcon günlükleri; Git'e eklenmez
+└── README.md</pre>
+  <p>RPLidar sürücüsü proje kaynak kodunda tutulmaz. <code>rplidar_ros</code>, işletim sisteminin ROS kurulumunda <code>/opt/ros/humble</code> altında bulunur. Bu yaklaşım depoyu küçük, tekrarlanabilir ve sürücü güncellemelerinden bağımsız tutar.</p>
+
+  <h2>3. Donanım ve veri akışı</h2>
+  <pre>MPU6050 + teker enkoderleri
+             │ I²C / GPIO
+       Arduino Mega2560
+             │ USB / CH340, 115200 baud, JSON satırları
+             ▼
+    /dev/arduino  ──►  arduino_bridge  ──► /imu/data, /odom, /joint_states
+
+       RPLidar A1
+             │ USB / CP210x, 115200 baud
+             ▼
+    /dev/rplidar  ──►  rplidar_ros     ──► /scan</pre>
+
+  <h2>4. Arduino'nun Jetson tarafından görülmesi</h2>
+  <h3>4.1 USB-serial çeviricinin doğrulanması</h3>
+  <p>Mega2560 kartındaki USB-seri dönüştürücü CH340'tır. Jetson, Arduino'nun mikrodenetleyici çekirdeğini doğrudan çalıştırmaz; USB üzerinden CH340'ın sunduğu seri portu açar. Arduino firmware'i bu porttan bayt gönderir, Jetson da bu baytları okur.</p>
+  <pre>lsusb
+ls -l /dev/ttyUSB* /dev/ttyCH341* /dev/arduino</pre>
+  <p>Gözlenen USB kimliği şudur:</p>
+  <pre>Bus 001 Device ...: ID 1a86:7523 QinHeng Electronics CH340 serial converter</pre>
+  <p>Bu çıktı, Linux'un Arduino kartının USB-seri dönüştürücüsünü algıladığını gösterir. İstenen davranış; fiziksel port adı değişse bile sabit <code>/dev/arduino</code> bağlantısının oluşmasıdır.</p>
+
+  <h3>4.2 Kalıcı port adı (udev)</h3>
+  <p><code>scripts/usb_serial/99-kasif-usb-serial.rules</code> dosyasında aşağıdaki Arduino kuralı yer alır:</p>
+  <pre>SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="arduino", MODE="0660", GROUP="dialout"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="1a86", ATTR{idProduct}=="7523", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{ID_MM_PORT_IGNORE}="1"</pre>
+  <p>Kural, CH340 aygıtını USB üretici/ürün kimliğiyle eşleştirir ve gerçek port hangi adla oluşturulursa oluşturulsun <code>/dev/arduino</code> sembolik bağını üretir. Ayrıca ModemManager'ın cihazı sahiplenmesini engeller.</p>
+  <pre>sudo cp scripts/usb_serial/99-kasif-usb-serial.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+# Arduino'yu çıkarıp yeniden takın.
+ls -l /dev/arduino</pre>
+  <p>Bu projede doğrulanan örnek:</p>
+  <pre>lrwxrwxrwx 1 root root 12 ... /dev/arduino -&gt; ttyCH341USB0
+crw-rw---- 1 root dialout ... /dev/ttyCH341USB0</pre>
+
+  <h3>4.3 Seri port izni</h3>
+  <p>Portun grubu <code>dialout</code> olduğu için kullanıcı bu gruba eklenmelidir:</p>
+  <pre>sudo usermod -aG dialout orin
+# Oturumu kapatıp açın veya sistemi yeniden başlatın.
+id -nG</pre>
+  <p><code>id -nG</code> çıktısında <code>dialout</code> görünmelidir. Bu adım yapılmadan <code>stty</code> ve <code>cat</code> komutları <em>Permission denied</em> verir.</p>
+
+  <h3>4.4 Ham veri testi</h3>
+  <pre>stty -F /dev/arduino 115200 raw -echo
+cat /dev/arduino</pre>
+  <p>Beklenen veri, her satırı tek JSON nesnesi olacak şekilde yaklaşık 10 Hz'dir:</p>
+  <pre>{"t_ms":1121,"ax":-0.014365,"ay":0.002394,"az":12.205640,"gx":0.000224,"gy":0.000685,"gz":0.000116,"enc_l":0,"enc_r":0}</pre>
+  <div class="warn"><strong>Port sahipliği:</strong> <code>cat /dev/arduino</code> yalnızca ham test içindir. Testi <code>Ctrl+C</code> ile durdurmadan <code>serial_bridge</code> başlatılmamalıdır; aynı seri portu iki program aynı anda güvenilir biçimde kullanamaz.</div>
+
+  <h2>5. Arduino firmware ve veri sözleşmesi</h2>
+  <p>Firmware, MPU6050'den ivmeölçer/jyroskop değerlerini ve iki enkoderin sayacını okur; tek satır JSON biçiminde gönderir. Köprünün zorunlu alanları şunlardır:</p>
+  <table>
+    <tr><th>Alan</th><th>Anlamı</th><th>Birim</th></tr>
+    <tr><td><code>t_ms</code></td><td>Arduino açılışından itibaren zaman</td><td>ms</td></tr>
+    <tr><td><code>ax, ay, az</code></td><td>Doğrusal ivme</td><td>m/s²</td></tr>
+    <tr><td><code>gx, gy, gz</code></td><td>Açısal hız</td><td>rad/s</td></tr>
+    <tr><td><code>enc_l, enc_r</code></td><td>Sol ve sağ tekerin birikimli enkoder sayısı</td><td>tick</td></tr>
+  </table>
+  <p>MPU6050 için başlangıçta 500 örnekle ofset alınır. Z eksenindeki yerçekimi korunacak biçimde hesap yapıldığında, robot sabitken doğru sonuç yaklaşık <code>az = 9.80665 m/s²</code> olur. İlk gözlenen yaklaşık 12 m/s² değeri ölçek/ofset sorunu olduğunu gösteriyordu; firmware düzeltmesinden sonra yaklaşık <code>x=0.077, y=0.053, z=9.884</code> gözlendi. Bu değer durağan IMU için beklenen aralıktadır.</p>
+
+  <h3>5.1 Enkoder yönlerinin standardizasyonu</h3>
+  <p>Mekanik yerleşim nedeniyle sağ ve sol enkoder sayma yönleri birbirinin tersi olabilir. Motorun ileri gitmesi ile enkoderin artış yönü aynı şey değildir. Odometrinin kuralı şudur: robot ileri giderken hem <code>enc_l</code> hem <code>enc_r</code> artmalıdır.</p>
+  <p>Firmware'de, ISR ve motor yön mantığını değiştirmeden, JSON'a yazılmadan hemen önce yazılımsal işaret normalleştirmesi yapılmıştır:</p>
+  <pre>const int encoderLeftSign = 1;
+const int encoderRightSign = -1;
+
+long encLeftForOdom = encoderLeftSign * e1;
+long encRightForOdom = encoderRightSign * e2;</pre>
+  <p>Ardından JSON alanlarında ham <code>e1/e2</code> yerine <code>encLeftForOdom/encRightForOdom</code> gönderilir. İleri teleop testinde iki tarafın teker açıları birlikte ve pozitif arttı; bu yön dönüşümünün doğru çalıştığını doğrular. Sağ/sol büyüklük farkı küçük olduğundan, bir sonraki fiziksel kalibrasyon adımı düz zeminde ölçülü 1 metre sürüş ile <code>encoder_ticks_per_rev</code>, teker yarıçapı ve iz genişliğini ayarlamaktır.</p>
+
+  <h2>6. Arduino ROS 2 köprüsü: arduino_bridge</h2>
+  <p><code>src/arduino_bridge</code>, Python ile yazılmış ROS 2 paketi ve seri JSON verisinin ROS mesajlarına dönüştürücüsüdür. Ana uygulama dosyası <code>arduino_bridge/serial_bridge.py</code>'dır.</p>
+  <table>
+    <tr><th>Girdi / işlem</th><th>Çıktı</th></tr>
+    <tr><td><code>/dev/arduino</code>, 115200 baud, satır bazlı JSON</td><td><code>/imu/data</code> — <code>sensor_msgs/msg/Imu</code></td></tr>
+    <tr><td>Enkoder tick farkı, teker yarıçapı ve tekerler arası mesafe</td><td><code>/odom</code> — <code>nav_msgs/msg/Odometry</code></td></tr>
+    <tr><td>Enkoderden teker dönüş açısı</td><td><code>/joint_states</code> — <code>sensor_msgs/msg/JointState</code></td></tr>
+  </table>
+  <p>Odometrinin diferansiyel sürüş hesabı aşağıdaki gibidir:</p>
+  <pre>d_left  = 2π × wheel_radius × Δticks_left / encoder_ticks_per_rev
+d_right = 2π × wheel_radius × Δticks_right / encoder_ticks_per_rev
+d_center = (d_left + d_right) / 2
+dtheta = (d_right - d_left) / wheel_base</pre>
+  <p>Mevcut yapılandırma değerleri:</p>
+  <pre>port: /dev/arduino
+baudrate: 115200
+wheel_radius: 0.04          # metre; fiziksel ölçüm ile doğrulanmalı
+wheel_base: 0.36            # metre; fiziksel ölçüm ile doğrulanmalı
+encoder_ticks_per_rev: 7000 # tur başına tick; fiziksel test ile doğrulanmalı</pre>
+  <p>Bu ayarlar <code>src/robot_bringup/config/arduino_bridge.yaml</code> içinde merkezi olarak saklanır. IMU orientation alanı henüz hesaplanmadığından kovaryansta orientation bilinmiyor olarak işaretlenir. Bu normaldir; ileride EKF/IMU füzyonu eklendiğinde yönelim tamamlanacaktır.</p>
+
+  <h3>6.1 Python seri bağımlılığı</h3>
+  <p>İlk çalıştırmada <code>ModuleNotFoundError: No module named 'serial'</code> hatası alındı. Bu, Python'daki <code>pyserial</code> paketinin eksik olduğunu gösterir. Sistem paketiyle çözüm:</p>
+  <pre>sudo apt update
+sudo apt install python3-serial</pre>
+  <p>Bağımlılık, paketin <code>package.xml</code> dosyasında <code>python3-serial</code> olarak da belirtilmiştir. Doğrulanan sistem durumu: <code>python3-serial 3.5-1</code>.</p>
+
+  <h3>6.2 Köprü derleme ve test komutları</h3>
+  <pre>cd ~/DiffDrive_Slamtoolbox
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+
+ros2 run arduino_bridge serial_bridge
+
+# Ayrı terminallerde:
+source ~/DiffDrive_Slamtoolbox/install/setup.bash
+ros2 topic echo /imu/data --once
+ros2 topic echo /odom --once
+ros2 topic echo /joint_states</pre>
+  <p><code>--symlink-install</code>, Python/launch/config dosyalarındaki geliştirme değişikliklerinin kurulum kopyası yerine kaynak dosyaya bağlanmasını sağlar. Yine de paket metadatası veya yeni dosya değişikliklerinden sonra yeniden <code>colcon build</code> çalıştırılmalıdır.</p>
+
+  <h3>6.3 Hareket testi</h3>
+  <p>Teleop klavye düğümü ile <code>/cmd_vel</code> komutu gönderildiğinde Arduino tarafı motoru sürer. Kullanılan örnek komut:</p>
+  <pre>ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p speed:=0.05 -p turn:=0.3</pre>
+  <p><code>i</code> ileri, <code>,</code> geri, <code>j/l</code> dönüş, <code>k</code> durdurma komutudur. İleri sürüşte kontrol sırası: (1) iki enkoder sayısı artıyor mu, (2) <code>/joint_states.position</code> iki tarafta da aynı yönde değişiyor mu, (3) <code>/odom.pose.pose.position</code> ileri eksende ilerliyor mu, (4) dönmeden ilerlerken heading gereksiz değişiyor mu?</p>
+
+  <h2>7. RPLidar A1 kurulumu</h2>
+  <h3>7.1 Kalıcı port adı</h3>
+  <p>RPLidar'ın USB-seri dönüştürücüsü CP210x olarak algılandı:</p>
+  <pre>Bus 001 Device ...: ID 10c4:ea60 Silicon Labs CP210x UART Bridge</pre>
+  <p>Aynı udev dosyasındaki Lidar kuralı:</p>
+  <pre>SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="rplidar", MODE="0660", GROUP="dialout"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="10c4", ATTR{idProduct}=="ea60", ENV{ID_MM_DEVICE_IGNORE}="1"</pre>
+  <p>Doğrulanan bağlantı:</p>
+  <pre>lrwxrwxrwx 1 root root 7 ... /dev/rplidar -&gt; ttyUSB0
+crw-rw---- 1 root dialout ... /dev/ttyUSB0</pre>
+
+  <h3>7.2 Sürücünün sistem çapında kurulumu</h3>
+  <p>Başlangıçta sürücü kaynak kodu çalışma alanında denenmiştir; ancak proje deposuna sürücü kaynaklarını koymamak için kaldırılmıştır. Nihai yaklaşım, ROS'un Ubuntu paketi olan <code>ros-humble-rplidar-ros</code>'u kullanmaktır:</p>
+  <pre>sudo apt update
+sudo apt install ros-humble-rplidar-ros
+
+source /opt/ros/humble/setup.bash
+ros2 pkg prefix rplidar_ros</pre>
+  <p>Doğrulama sonucunda paket yolu <code>/opt/ros/humble</code> olmalıdır. Doğrulanan paket sürümü: <code>ros-humble-rplidar-ros 2.1.4-1jammy.20260725.195700</code>. Bu paket kendi gerektirdiği RPLidar SDK bileşenini getirir; ayrıca proje içine SDK klonlamak gerekmez.</p>
+  <p><code>~/.bashrc</code> dosyasında ROS ortamının otomatik yüklenmesi için şu satır bulunur:</p>
+  <pre>source /opt/ros/humble/setup.bash</pre>
+
+  <h3>7.3 A1 sürücüsünü tek başına test etme</h3>
+  <pre>source /opt/ros/humble/setup.bash
+ros2 launch rplidar_ros rplidar_a1_launch.py \
+  serial_port:=/dev/rplidar \
+  serial_baudrate:=115200 \
+  frame_id:=laser</pre>
+  <p>Ayrı terminalde:</p>
+  <pre>source /opt/ros/humble/setup.bash
+ros2 topic echo /scan --once
+ros2 topic hz /scan</pre>
+  <div class="ok"><strong>Son test sonucu:</strong> İlk denemelerde <code>SL_RESULT_OPERATION_TIMEOUT</code> hatası alındı. Fiziksel USB portu değiştirildiğinde bağlantı düzeldi ve <code>/scan</code> verisi yayınlanmaya başladı. Bu nedenle sorun yazılım ayarından çok fiziksel USB bağlantı/port kararlılığıyla ilişkiliydi.</div>
+
+  <h2>8. robot_bringup paketi</h2>
+  <p>Donanım sürücülerini tek tek komutla açmak yerine, <code>src/robot_bringup</code> paketi oluşturuldu. Bu paket robotun uygulama orkestrasyon katmanıdır; sensör veya motor sürücüsü içermez.</p>
+  <pre>src/robot_bringup/
+├── config/
+│   └── arduino_bridge.yaml
+├── launch/
+│   └── hardware.launch.py
+├── resource/robot_bringup
+├── robot_bringup/__init__.py
+├── package.xml
+├── setup.py
+└── setup.cfg</pre>
+  <p><code>hardware.launch.py</code> iki süreci başlatır:</p>
+  <ol>
+    <li><code>arduino_bridge/serial_bridge</code> — merkezi YAML dosyasından <code>/dev/arduino</code> parametreleriyle.</li>
+    <li>Sistem çapında kurulu <code>rplidar_ros</code> paketinin <code>rplidar_a1_launch.py</code> launch dosyası — <code>/dev/rplidar</code>, 115200 baud ve <code>laser</code> frame'iyle.</li>
+  </ol>
+  <pre>cd ~/DiffDrive_Slamtoolbox
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select robot_bringup
+source install/setup.bash
+ros2 launch robot_bringup hardware.launch.py</pre>
+  <p>Başarılı başlangıçta beklenenler:</p>
+  <pre>[serial_bridge_node]: Seri port /dev/arduino başarıyla açıldı.
+[rplidar_node]: RPLidar running on ROS2 package rplidar_ros...</pre>
+  <p>Kontrol için:</p>
+  <pre>ros2 topic list | grep -E '/(imu/data|odom|joint_states|scan)'
+ros2 topic echo /scan --once
+ros2 topic echo /imu/data --once
+ros2 topic echo /odom --once</pre>
+
+  <h3>8.1 Yapılandırma temizliği</h3>
+  <p>Başlangıçta <code>rplidar_a1.yaml</code> dosyası kaldırıldıktan sonra colcon, eski <code>build/robot_bringup</code> çıktısını kopyalamaya çalışıp “doesn't exist or not a regular file” hatası verdi. Kaynak dosya silinmiş olsa da derleme klasöründe eski paket metadatası kalmıştı. Çözüm, yalnızca bu paketin üretilmiş klasörlerini temizleyip yeniden derlemektir:</p>
+  <pre>rm -rf build/robot_bringup install/robot_bringup
+colcon build --symlink-install --packages-select robot_bringup
+source install/setup.bash</pre>
+  <div class="warn"><strong>Dikkat:</strong> Bu komut yalnızca hedef paket için üretilen <code>build</code> ve <code>install</code> alt klasörlerine uygulanmalıdır. Kaynak dizini <code>src</code> veya tüm çalışma alanı silinmez.</div>
+
+  <h2>9. Uçtan uca kabul testi</h2>
+  <table>
+    <tr><th>Kontrol</th><th>Komut / gözlem</th><th>Durum</th></tr>
+    <tr><td>Arduino USB algılama</td><td><code>lsusb</code> içinde <code>1a86:7523</code></td><td>Tamam</td></tr>
+    <tr><td>Arduino sabit portu</td><td><code>ls -l /dev/arduino</code></td><td>Tamam</td></tr>
+    <tr><td>Arduino ham JSON</td><td><code>stty ...; cat /dev/arduino</code></td><td>Tamam</td></tr>
+    <tr><td>IMU yerçekimi</td><td>Durağanken z yaklaşık 9.81 m/s²</td><td>Tamam</td></tr>
+    <tr><td>İleri enkoder yönü</td><td>İki teker açısı ileri sürüşte birlikte artar</td><td>Tamam</td></tr>
+    <tr><td>RPLidar sabit portu</td><td><code>ls -l /dev/rplidar</code></td><td>Tamam</td></tr>
+    <tr><td>Lidar taraması</td><td><code>ros2 topic echo /scan --once</code></td><td>Tamam; fiziksel USB port değişimi sonrası</td></tr>
+    <tr><td>Birleşik başlatma</td><td><code>ros2 launch robot_bringup hardware.launch.py</code></td><td>Hazır; lidar doğrulanmış fiziksel portta çalıştırılmalı</td></tr>
+  </table>
+
+  <h2>10. Sorun giderme rehberi</h2>
+  <table>
+    <tr><th>Belirti</th><th>Muhtemel neden</th><th>Çözüm</th></tr>
+    <tr><td><code>Permission denied</code></td><td>Kullanıcı <code>dialout</code> grubunda değil veya yeni oturum açılmadı.</td><td><code>sudo usermod -aG dialout orin</code>; oturumu kapat/aç; <code>id -nG</code> ile doğrula.</td></tr>
+    <tr><td><code>ModuleNotFoundError: serial</code></td><td>PySerial eksik.</td><td><code>sudo apt install python3-serial</code>.</td></tr>
+    <tr><td><code>/dev/arduino</code> yok</td><td>USB bağlantısı veya udev kuralı uygulanmamış.</td><td><code>lsusb</code>, kural yükleme komutları, cihazı yeniden takma.</td></tr>
+    <tr><td>RPLidar timeout</td><td>Yanlış baud, portun başka süreçte açık olması ya da fiziksel USB/kablo/port sorunu.</td><td>A1 için 115200 kullan; ham portu kapat; kabloyu ve USB portunu değiştir. Bu projede fiziksel port değişimi sorunu çözdü.</td></tr>
+    <tr><td>Odom ters yönde</td><td>Bir enkoder işareti ters.</td><td>Arduino JSON öncesi <code>encoderLeftSign</code>/<code>encoderRightSign</code> normalleştirmesini değiştir; motor yön kodunu rastgele değiştirme.</td></tr>
+    <tr><td>Colcon eksik dosya hatası</td><td>Silinmiş kaynak için eski paket build çıktısı.</td><td>Yalnız ilgili paketin <code>build/&lt;paket&gt;</code> ve <code>install/&lt;paket&gt;</code> klasörlerini temizleyip derle.</td></tr>
+  </table>
+
+  <h2>11. Sonraki mimari planı</h2>
+  <p>Donanım katmanı artık aşağıdaki aşamalar için uygun temel sağlar. Her aşama ayrı paket ve launch dosyası olarak eklenmelidir:</p>
+  <pre>src/
+├── arduino_bridge/       # Mevcut: Arduino verisi ve odometri
+├── robot_bringup/        # Mevcut: hardware.launch.py
+├── robot_description/    # Sonraki: URDF/Xacro, robot_state_publisher ve TF
+├── robot_localization/   # Sonraki: EKF yapılandırması
+├── mapping/              # Sonraki: slam_toolbox eşzamanlı haritalama
+├── localization/         # Sonraki: map_server + AMCL
+└── navigation/           # Sonraki: Nav2 yapılandırması</pre>
+  <p>Önerilen launch katmanları:</p>
+  <ul>
+    <li><code>hardware.launch.py</code>: Arduino köprüsü ve Lidar; şu anda var.</li>
+    <li><code>mapping.launch.py</code>: hardware + robot description + EKF + SLAM Toolbox.</li>
+    <li><code>localization.launch.py</code>: hardware + robot description + EKF + map_server + AMCL.</li>
+    <li><code>navigation.launch.py</code>: localization + Nav2.</li>
+  </ul>
+  <p>Harita dosyaları ileride kökteki <code>maps/</code> dizininde tutulmalıdır. SLAM, lokalizasyon ve Nav2 parametreleri ilgili paketlerin <code>config/</code> dizinlerinde kalmalıdır. Böylece donanım sürücüsü, robot geometrisi ve uygulama davranışı birbirinden ayrılır.</p>
+
+  <h2>12. Sıfırdan kurulum kontrol listesi</h2>
+  <ol>
+    <li>ROS 2 Humble ve colcon'un Jetson'da çalıştığını doğrula.</li>
+    <li>Arduino firmware'ini yükle; 115200 baud ve JSON alanlarını bu rapordaki sözleşmeyle eşleştir.</li>
+    <li>Arduino ve Lidar udev kurallarını kur; kullanıcıyı <code>dialout</code> grubuna ekle.</li>
+    <li><code>python3-serial</code> ve <code>ros-humble-rplidar-ros</code> paketlerini apt ile yükle.</li>
+    <li>Önce ham Arduino JSON'unu, sonra tek başına RPLidar <code>/scan</code> yayınını doğrula.</li>
+    <li>Çalışma alanını derle ve <code>hardware.launch.py</code> ile birleşik başlatma yap.</li>
+    <li>Teleop ile düşük hızda ileri/dönüş testleri gerçekleştir; enkoder yönü ve odometriyi fiziksel ölçümle kalibre et.</li>
+    <li>Bu temel kararlı hale geldikten sonra TF, EKF, SLAM, lokalizasyon ve Nav2 aşamalarına geç.</li>
+  </ol>
+  <p class="small">Kaynak notu: RPLidar ROS 2 paketi için resmi ROS dokümantasyonu: https://docs.ros.org/en/ros2_packages/humble/api/rplidar_ros/ . Proje içi ayrıntılar için <code>README.md</code>, <code>docs/serial-protocol.md</code>, <code>docs/rplidar.md</code> ve <code>docs/robot_bringup.md</code> dosyalarına bakın.</p>
+</body>
+</html>

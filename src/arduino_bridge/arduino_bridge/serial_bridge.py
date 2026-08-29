@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 
+import json
 import math
 import serial
 import rclpy
 
 from rclpy.node import Node
 
-from std_msgs.msg import Float32
-from sensor_msgs.msg import Imu, JointState
+from sensor_msgs.msg import BatteryState, Imu, JointState
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
+from std_msgs.msg import Float32
 
 
 class SerialBridgeNode(Node):
@@ -18,8 +19,8 @@ class SerialBridgeNode(Node):
         super().__init__('serial_bridge_node')
 
         # ---------------- SERIAL ----------------
-        self.port = '/dev/arduino'
-        self.baudrate = 115200
+        self.port = self.declare_parameter('port', '/dev/arduino').value
+        self.baudrate = self.declare_parameter('baudrate', 115200).value
 
         try:
             self.ser = serial.Serial(
@@ -69,16 +70,24 @@ class SerialBridgeNode(Node):
             10
         )
 
-        self.oxygen_pub = self.create_publisher(
+        self.battery_pub = self.create_publisher(
+            BatteryState,
+            '/battery_state',
+            10
+        )
+
+        self.battery_power_pub = self.create_publisher(
             Float32,
-            '/oxygen',
+            '/battery/power',
             10
         )
 
         # ---------------- ROBOT STATE ----------------
-        self.wheel_radius = 0.04
-        self.wheel_base = 0.36
-        self.encoder_ticks_per_rev = 7000
+        self.wheel_radius = self.declare_parameter('wheel_radius', 0.04).value
+        self.wheel_base = self.declare_parameter('wheel_base', 0.36).value
+        self.encoder_ticks_per_rev = self.declare_parameter(
+            'encoder_ticks_per_rev', 7000
+        ).value
 
         self.x = 0.0
         self.y = 0.0
@@ -143,7 +152,7 @@ class SerialBridgeNode(Node):
                     .decode('utf-8', errors='ignore') \
                     .strip()
 
-                if not line or "O2:" not in line:
+                if not line:
                     return
 
                 data = self.parse_line(line)
@@ -161,7 +170,7 @@ class SerialBridgeNode(Node):
                     return
 
                 self.publish_imu(now, data)
-                self.publish_oxygen(data)
+                self.publish_battery(now, data)
                 self.update_odometry(now, dt, data)
 
                 self.last_time = now
@@ -179,21 +188,28 @@ class SerialBridgeNode(Node):
 
         try:
 
-            values = {}
+            values = json.loads(line)
+            required_fields = {
+                't_ms', 'ax', 'ay', 'az', 'gx', 'gy', 'gz', 'enc_l', 'enc_r'
+            }
+            if not isinstance(values, dict) or not required_fields.issubset(values):
+                return None
+            data = {key: float(values[key]) for key in required_fields}
 
-            parts = line.split(',')
+            # Battery telemetry was added after the original bridge protocol.
+            # Keep it optional so older firmware remains compatible.
+            battery_fields = {
+                'voltage', 'current', 'power', 'charge', 'capacity',
+                'percentage'
+            }
+            if battery_fields.issubset(values):
+                for key in battery_fields:
+                    data[key] = float(values[key])
+                data['battery_ok'] = bool(values.get('battery_ok', True))
 
-            for part in parts:
+            return data
 
-                if ':' in part:
-
-                    key, val = part.split(':')
-
-                    values[key.strip()] = float(val.strip())
-
-            return values
-
-        except Exception:
+        except (TypeError, ValueError, json.JSONDecodeError):
             return None
 
     # ==========================================================
@@ -208,20 +224,20 @@ class SerialBridgeNode(Node):
         imu_msg.header.frame_id = 'imu_link'
 
         imu_msg.linear_acceleration.x = float(
-            data.get('GX', 0.0)
+            data['ax']
         )
 
         imu_msg.linear_acceleration.y = float(
-            data.get('GY', 0.0)
+            data['ay']
         )
 
-        imu_msg.linear_acceleration.z = 0.0
+        imu_msg.linear_acceleration.z = data['az']
 
-        imu_msg.angular_velocity.x = 0.0
-        imu_msg.angular_velocity.y = 0.0
+        imu_msg.angular_velocity.x = data['gx']
+        imu_msg.angular_velocity.y = data['gy']
 
         imu_msg.angular_velocity.z = float(
-            data.get('GZ', 0.0)
+            data['gz']
         )
 
         imu_msg.orientation.x = 0.0
@@ -229,11 +245,8 @@ class SerialBridgeNode(Node):
         imu_msg.orientation.z = 0.0
         imu_msg.orientation.w = 1.0
 
-        imu_msg.orientation_covariance = [
-            0.01, 0.0, 0.0,
-            0.0, 0.01, 0.0,
-            0.0, 0.0, 0.01
-        ]
+        # Firmware yönelim (quaternion) göndermiyor.
+        imu_msg.orientation_covariance[0] = -1.0
 
         imu_msg.angular_velocity_covariance = [
             0.01, 0.0, 0.0,
@@ -250,23 +263,76 @@ class SerialBridgeNode(Node):
         self.imu_pub.publish(imu_msg)
 
     # ==========================================================
-    # OXYGEN PUBLISH
+    # BATTERY STATE PUBLISH
     # ==========================================================
 
-    def publish_oxygen(self, data):
+    def publish_battery(self, stamp, data):
 
-        msg = Float32()
+        if 'voltage' not in data:
+            return
 
-        msg.data = float(
-            data.get('O2', 0.0)
+        battery_msg = BatteryState()
+        battery_msg.header.stamp = stamp.to_msg()
+        battery_msg.header.frame_id = 'battery_link'
+
+        battery_ok = data['battery_ok']
+        battery_msg.present = battery_ok
+        battery_msg.power_supply_health = (
+            BatteryState.POWER_SUPPLY_HEALTH_GOOD
+            if battery_ok
+            else BatteryState.POWER_SUPPLY_HEALTH_UNKNOWN
+        )
+        battery_msg.power_supply_technology = (
+            BatteryState.POWER_SUPPLY_TECHNOLOGY_LIPO
         )
 
-        self.oxygen_pub.publish(msg)
+        if not battery_ok:
+            battery_msg.voltage = math.nan
+            battery_msg.current = math.nan
+            battery_msg.power_supply_status = (
+                BatteryState.POWER_SUPPLY_STATUS_UNKNOWN
+            )
+            battery_msg.charge = math.nan
+            battery_msg.capacity = math.nan
+            battery_msg.percentage = math.nan
+            return self.battery_pub.publish(battery_msg)
+
+        battery_msg.voltage = data['voltage']
+        battery_msg.current = data['current']
+        battery_msg.charge = data['charge']
+        battery_msg.capacity = data['capacity']
+        battery_msg.design_capacity = data['capacity']
+        battery_msg.percentage = max(0.0, min(1.0, data['percentage']))
+        battery_msg.location = 'main_battery'
+
+        # Firmware follows BatteryState convention: discharge current is
+        # negative and charge current is positive.
+        if battery_msg.current < -0.01:
+            battery_msg.power_supply_status = (
+                BatteryState.POWER_SUPPLY_STATUS_DISCHARGING
+            )
+        elif battery_msg.current > 0.01:
+            battery_msg.power_supply_status = (
+                BatteryState.POWER_SUPPLY_STATUS_CHARGING
+            )
+        elif battery_msg.percentage >= 0.99:
+            battery_msg.power_supply_status = (
+                BatteryState.POWER_SUPPLY_STATUS_FULL
+            )
+        else:
+            battery_msg.power_supply_status = (
+                BatteryState.POWER_SUPPLY_STATUS_NOT_CHARGING
+            )
+
+        self.battery_pub.publish(battery_msg)
+
+        power_msg = Float32()
+        power_msg.data = data['power']
+        self.battery_power_pub.publish(power_msg)
 
     # ==========================================================
     # JOINT STATE PUBLISH
     # ==========================================================
-
 
     def publish_joint_states(self, stamp, left_enc, right_enc):
 
@@ -311,9 +377,9 @@ class SerialBridgeNode(Node):
 
     def update_odometry(self, stamp, dt, data):
 
-        left_enc = int(data.get('E1', 0))
-        right_enc = int(data.get('E2', 0))
-        
+        left_enc = int(data['enc_l'])
+        right_enc = int(data['enc_r'])
+
         self.publish_joint_states(stamp, left_enc, right_enc)
 
         if self.prev_left is None:
@@ -339,7 +405,7 @@ class SerialBridgeNode(Node):
         d_center = (d_left + d_right) / 2.0
 
         d_theta = (
-            d_left - d_right
+            d_right - d_left
         ) / self.wheel_base
 
         self.x += d_center * math.cos(
@@ -369,7 +435,8 @@ class SerialBridgeNode(Node):
             self.theta / 2.0
         )
 
-   
+        odom.twist.twist.linear.x = d_center / dt
+        odom.twist.twist.angular.z = d_theta / dt
 
         self.odom_pub.publish(odom)
 

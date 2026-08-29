@@ -1,0 +1,17 @@
+# Kaşif Çelebi — kalıcı USB-serial isimleri
+# ttyUSB0/1 sırası her takışta değişmesin diye vendor/product ile sabit symlink.
+#
+# Arduino Mega 2560 Pro Mini klonları: QinHeng CH340/CH341 (1a86:7523)
+# WCH sürücüsü cihazı ttyCH341USBx olarak da oluşturabilir.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="arduino", MODE="0660", GROUP="dialout"
+
+# ModemManager / brltty CH340'ı seri port sanmasın / kör cihaz sanmasın
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="1a86", ATTR{idProduct}=="7523", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{ID_MM_PORT_IGNORE}="1"
+
+# RPLidar A1/A2 çoğu kart: Silicon Labs CP2102 (10c4:ea60)
+# Jetson L4T'te cp210x sürücüsü çekirdekte hazır (ttyUSB).
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="rplidar", MODE="0660", GROUP="dialout"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="10c4", ATTR{idProduct}=="ea60", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# Bazı RPLidar USB-serial köprüleri FTDI
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="rplidar", MODE="0660", GROUP="dialout"

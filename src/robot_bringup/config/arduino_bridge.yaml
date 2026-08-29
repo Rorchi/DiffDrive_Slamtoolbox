@@ -1,0 +1,7 @@
+serial_bridge_node:
+  ros__parameters:
+    port: /dev/arduino
+    baudrate: 115200
+    wheel_radius: 0.04
+    wheel_base: 0.36
+    encoder_ticks_per_rev: 7000
