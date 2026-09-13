@@ -1,3 +1,8 @@
+# Amaç: Arduino köprüsünü ve RPLidar A1 sürücüsünü başlatır.
+# Çalışma: Arduino parametrelerini arduino_bridge.yaml dosyasından yükler. Sistem
+# rplidar_ros paketinin A1 launch dosyasını /dev/rplidar portu ve
+# laser_frame koordinat sistemiyle başlatma tanımına ekler.
+
 """Start the Arduino bridge and RPLidar A1 driver for the robot."""
 
 import os
@@ -10,7 +15,6 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    """Create the hardware-only launch description."""
     package_share = get_package_share_directory('robot_bringup')
     arduino_config = os.path.join(
         package_share, 'config', 'arduino_bridge.yaml'
@@ -32,8 +36,11 @@ def generate_launch_description():
         launch_arguments={
             'serial_port': '/dev/rplidar',
             'serial_baudrate': '115200',
-            'frame_id': 'laser',
+            'frame_id': 'laser_frame',
         }.items(),
     )
 
-    return LaunchDescription([arduino_bridge, rplidar])
+    return LaunchDescription([
+        arduino_bridge,
+        rplidar,
+    ])

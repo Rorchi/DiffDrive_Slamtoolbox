@@ -1,0 +1,53 @@
+# Amaç: Kayıtlı harita üzerinde lidar tabanlı Monte Carlo lokalizasyonu.
+# TF sorumluluğu: AMCL yalnız map->odom dönüşümünü; EKF ise odom->base_link
+# dönüşümünü yayımlar. Mapping sırasında slam_toolbox ile birlikte çalıştırılmaz.
+
+amcl:
+  ros__parameters:
+    use_sim_time: false               # Canlı robotta sistem saatini kullanır.
+
+    global_frame_id: map              # Global lokalizasyon referans frame'i.
+    odom_frame_id: odom               # EKF'nin yayımladığı yerel odometri frame'i.
+    base_frame_id: base_link          # Parçacıklarla pozu kestirilen robot frame'i.
+    scan_topic: /scan                 # Lokalizasyonda kullanılacak lidar topic'i.
+    tf_broadcast: true                # AMCL'nin map->odom TF'sini yayımlamasını sağlar.
+    transform_tolerance: 0.5          # TF zaman toleransı [s].
+
+    robot_model_type: nav2_amcl::DifferentialMotionModel  # Diferansiyel sürüş modeli.
+    alpha1: 0.20                      # Dönüşten kaynaklanan dönüş odometri gürültüsü.
+    alpha2: 0.20                      # İlerlemeden kaynaklanan dönüş gürültüsü.
+    alpha3: 0.20                      # İlerlemeden kaynaklanan ilerleme gürültüsü.
+    alpha4: 0.20                      # Dönüşten kaynaklanan ilerleme gürültüsü.
+    alpha5: 0.20                      # Omni model yanal gürültüsü; diff modelde etkisizdir.
+
+    min_particles: 500               # KLD örneklemede tutulacak en az parçacık sayısı.
+    max_particles: 2000              # İşlem yükünü sınırlayan en fazla parçacık sayısı.
+    pf_err: 0.05                      # Parçacık dağılımı için izin verilen KLD hata sınırı.
+    pf_z: 0.99                        # KLD örneklemenin güven olasılığı.
+    resample_interval: 1              # Her filtre güncellemesinde yeniden örnekleme yapar.
+    recovery_alpha_slow: 0.0          # Yavaş ortalama recovery katsayısı; 0 ile kapalı.
+    recovery_alpha_fast: 0.0          # Hızlı ortalama recovery katsayısı; 0 ile kapalı.
+
+    update_min_d: 0.10                # Filtre güncellemesi için gereken en az ilerleme [m].
+    update_min_a: 0.10                # Filtre güncellemesi için gereken en az dönüş [rad].
+    save_pose_rate: 0.5               # Son pozu parametre sunucusuna kaydetme frekansı [Hz].
+    always_reset_initial_pose: false  # Yeniden etkinleştirmede kayıtlı pozu zorla silmez.
+    set_initial_pose: false           # Başlangıç pozu RViz 2D Pose Estimate ile verilecek.
+    first_map_only: false             # Map topic'inde yeni harita gelirse kabul eder.
+
+    laser_model_type: likelihood_field  # Harita uzaklık alanına göre scan olasılığı.
+    max_beams: 60                     # Her scan'den modele alınacak azami eşit aralıklı ışın.
+    laser_min_range: 0.20             # Bundan yakın lidar ölçümlerini kullanmaz [m].
+    laser_max_range: 12.0             # Bundan uzak lidar ölçümlerini kullanmaz [m].
+    laser_likelihood_max_dist: 2.0    # En yakın engel uzaklık alanı üst sınırı [m].
+    sigma_hit: 0.20                   # Doğru engel ölçümü Gauss standart sapması [m].
+    lambda_short: 0.10                # Beklenenden kısa ölçümlerin üstel dağılım katsayısı.
+    z_hit: 0.50                       # Beklenen engele isabet eden ölçümlerin ağırlığı.
+    z_short: 0.05                     # Beklenenden kısa ölçümlerin ağırlığı.
+    z_max: 0.05                       # Azami menzil ölçümlerinin ağırlığı.
+    z_rand: 0.50                      # Rastgele lidar ölçümlerinin ağırlığı.
+
+    do_beamskip: false                # Dinamik engeller için beam skipping kapalı.
+    beam_skip_distance: 0.5           # Beam skipping harita uyuşmazlık mesafesi [m].
+    beam_skip_threshold: 0.3          # Atlanacak ışın oranı eşiği.
+    beam_skip_error_threshold: 0.9    # Çok ışın atlanırsa tam güncellemeye dönüş eşiği.

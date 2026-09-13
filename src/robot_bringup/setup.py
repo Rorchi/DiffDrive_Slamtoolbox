@@ -1,3 +1,7 @@
+# Amaç: Robot başlatma paketinin kurulacak dosyalarını tanımlar.
+# Çalışma: setuptools ile Python paketini, ament kaydını, launch dosyalarını ve
+# YAML/RViz ayarlarını ROS 2 paket paylaşım dizinine kurar.
+
 import os
 from glob import glob
 
@@ -20,7 +24,14 @@ setup(
             os.path.join('share', package_name, 'launch'),
             glob('launch/*.launch.py'),
         ),
-        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (
+            os.path.join('share', package_name, 'config'),
+            glob('config/*.yaml') + glob('config/*.rviz'),
+        ),
+        (
+            os.path.join('share', package_name, 'maps'),
+            glob('maps/*.yaml') + glob('maps/*.pgm'),
+        ),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

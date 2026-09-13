@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<!--
+Amaç: SLAM kalibrasyon raporunu yazdırılabilir HTML biçiminde sunar.
+Çalışma: Tarayıcı veya Writer, rapor içeriğini gömülü CSS ile A4 sayfa düzeninde
+biçimlendirir; başlıklar, tablolar ve kod blokları raporun okunmasını sağlar.
+-->
+
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>Kaşif Çelebi SLAM Hazırlık, Kalibrasyon ve Hata Giderme Raporu</title>
+  <style>
+    @page { size: A4; margin: 2.2cm 2cm 2cm 2.4cm; }
+    body { font-family: "Liberation Sans", Arial, sans-serif; font-size: 10.5pt; line-height: 1.38; color: #1d2833; }
+    h1 { color: #153a5b; font-size: 20pt; border-bottom: 2px solid #2b78a6; padding-bottom: 5px; margin-top: 22px; }
+    h2 { color: #1f5c82; font-size: 15pt; margin-top: 18px; }
+    h3 { color: #286f97; font-size: 12pt; margin-top: 14px; }
+    p { margin: 6px 0; text-align: justify; }
+    ul, ol { margin-top: 4px; margin-bottom: 8px; }
+    li { margin: 3px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0 15px 0; font-size: 9.5pt; }
+    th { background: #1f5c82; color: white; text-align: left; padding: 6px; border: 1px solid #adc2d1; }
+    td { padding: 6px; vertical-align: top; border: 1px solid #adc2d1; }
+    tr:nth-child(even) td { background: #eef5f8; }
+    pre { font-family: "Liberation Mono", monospace; font-size: 8.8pt; background: #f3f5f7; border-left: 4px solid #2b78a6; padding: 9px; white-space: pre-wrap; }
+    code { font-family: "Liberation Mono", monospace; font-size: 9pt; color: #7a2431; }
+    .cover { text-align: center; margin-top: 4.2cm; }
+    .cover h1 { border: 0; font-size: 26pt; text-align: center; }
+    .cover .subtitle { font-size: 16pt; color: #2b78a6; text-align: center; }
+    .cover .meta { margin-top: 4cm; text-align: center; color: #526675; }
+    .pagebreak { page-break-before: always; }
+    .note { background: #eaf4e2; border-left: 5px solid #5b8f3d; padding: 9px 12px; margin: 10px 0; }
+    .warning { background: #fff3db; border-left: 5px solid #d89019; padding: 9px 12px; margin: 10px 0; }
+    .critical { background: #fde9e7; border-left: 5px solid #b84035; padding: 9px 12px; margin: 10px 0; }
+    .small { font-size: 8.5pt; color: #526675; }
+    .toc a { color: #1f5c82; text-decoration: none; }
+    .status-ok { color: #28723d; font-weight: bold; }
+    .status-open { color: #a86200; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <h1>KAŞİF ÇELEBİ</h1>
+    <p class="subtitle">SLAM Hazırlık, Sensör Füzyonu, Kalibrasyon ve Hata Giderme Raporu</p>
+    <p><b>Platform:</b> Diferansiyel sürüşlü mobil robot<br>
+       <b>Yazılım:</b> ROS 2 Humble · robot_localization · slam_toolbox · RPLidar<br>
+       <b>Donanım:</b> NVIDIA Jetson Orin · Arduino · tekerlek encoderleri · IMU · RPLidar A1</p>
+    <p class="meta">Belge tarihi: 13 Eylül 2026<br>
+       Belge sürümü: 1.0<br>
+       Proje: <code>/home/orin/DiffDrive_Slamtoolbox</code></p>
+  </div>
+
+  <div class="pagebreak"></div>
+  <h1 id="belge">Belge bilgileri</h1>
+  <table>
+    <tr><th>Alan</th><th>Değer</th></tr>
+    <tr><td>Belgenin amacı</td><td>SLAM öncesinde yapılan hazırlıkları, haritalama testlerinde karşılaşılan arızaları, rosbag kanıtlarını, uygulanan düzeltmeleri ve tekrar kullanılacak komutları tek bir teknik kayıt altında toplamak.</td></tr>
+    <tr><td>Kapsam</td><td>Seri köprü, encoder odometrisi, IMU, EKF, TF ağacı, lidar, slam_toolbox, RViz, teleop ve rosbag tabanlı doğrulama.</td></tr>
+    <tr><td>Mevcut sonuç</td><td><span class="status-ok">BAŞARILI:</span> Gerçek robot ile RViz yönleri tutarlı; ileri–geri ve sağ–sol hareketleri doğru; harita önceki denemelere göre belirgin biçimde düzgün.</td></tr>
+    <tr><td>Sonraki aşama</td><td>Kayıtlı haritayla <code>map_server + AMCL</code> lokalizasyonu ve ardından Nav2 entegrasyonu.</td></tr>
+    <tr><td>Kaynaklar</td><td>Bu çalışma süresince incelenen proje dosyaları, <code>stationary_ekf_check</code>, <code>first_mapping_test</code>, <code>slam_rosbag</code>, <code>slam_rosbag2</code> kayıtları ve fiziksel sürüş gözlemleri.</td></tr>
+  </table>
+
+  <h2>İçindekiler</h2>
+  <ol class="toc">
+    <li><a href="#ozet">Yönetici özeti</a></li>
+    <li><a href="#mimari">Nihai mimari ve TF sorumlulukları</a></li>
+    <li><a href="#baslangic">SLAM öncesi başlangıç durumu</a></li>
+    <li><a href="#seri">Seri köprü ve odometri düzeltmeleri</a></li>
+    <li><a href="#ekf">EKF ve sensör füzyonu</a></li>
+    <li><a href="#sabit">Sabit durum testi</a></li>
+    <li><a href="#slam-altyapi">SLAM altyapısı</a></li>
+    <li><a href="#olaylar">Haritalama hataları ve kök neden analizi</a></li>
+    <li><a href="#kalibrasyon">Nihai yön ve geometri kalibrasyonu</a></li>
+    <li><a href="#teleop">Teleop düzeltmesi</a></li>
+    <li><a href="#uyarilar">Uyarılar ve yorumlama rehberi</a></li>
+    <li><a href="#nihai">Nihai parametre özeti</a></li>
+    <li><a href="#komutlar">Kullanılan komutlar</a></li>
+    <li><a href="#prosedur">Önerilen haritalama prosedürü</a></li>
+    <li><a href="#kabul">Kabul kriterleri ve AMCL’ye geçiş</a></li>
+    <li><a href="#ekler">Ekler</a></li>
+  </ol>
+
+  <div class="pagebreak"></div>
+  <h1 id="ozet">1. Yönetici özeti</h1>
+  <p>Çalışmanın ilk hedefi, robotu doğrudan SLAM’e başlatmak değil, haritalamanın dayandığı hareket tahmin zincirini güvenilir hâle getirmekti. Diferansiyel sürüşlü bir robotta lidar taramalarının aynı duvar üzerinde üst üste oturması; encoder ölçeğinin, dönüş yönünün, IMU gyro yönünün, zaman damgalarının ve TF yayıncılarının birbiriyle tutarlı olmasına bağlıdır. Bu zincirdeki küçük bir yön ya da ölçek hatası, robot hareket ettikçe büyür ve haritada çift duvar, yayılma veya yıldız biçimli bindirme olarak görünür.</p>
+  <p>Önce Arduino seri köprüsü güvenli ve filtrelenebilir bir ham veri kaynağına dönüştürüldü. Ham wheel odometry <code>/wheel/odometry_raw</code> üzerinde yayımlandı, covariance alanları eklendi, zaman farkı Arduino’nun <code>t_ms</code> değerinden hesaplandı, encoder sıçramaları ve yeniden başlatmalar yönetildi, geçersiz veya sonlu olmayan seri veriler reddedildi ve <code>/cmd_vel</code> kesintisi için güvenli durdurma watchdog’u eklendi.</p>
+  <p>Ardından <code>robot_localization</code> EKF’si wheel odometry ile IMU gyro-z bilgisini birleştirecek şekilde kuruldu. TF sahipliği kesin olarak ayrıldı: <code>slam_toolbox</code> yalnızca <code>map → odom</code>, EKF yalnızca <code>odom → base_link</code>, <code>robot_state_publisher</code> ise robotun statik/eklem dönüşümlerini yayınlıyor. Seri köprü, EKF devredeyken dinamik odom TF’si yayınlamıyor.</p>
+  <p>Haritalama testleri sırasında üç ana problem bulundu: aynı launch bileşenlerinin iki kez çalıştırılması, encoder yaw işaretinin fiziksel dönüşe ters olması ve ilk ara düzeltmede yanlışlıkla IMU işaretinin çevrilmesi. Rosbag analizleri wheel–IMU korelasyonu, net yaw farkı ve <code>map → odom</code> sıçramalarıyla bu nedenleri görünür hâle getirdi. Son durumda etkin tekerlek açıklığı <b>0.20 m</b>, IMU gyro-z ölçeği <b>+1.0</b>, wheel yaw ölçeği <b>−1.0</b> olarak doğrulandı. Teleop tarafında standart <b>J=sol</b>, <b>L=sağ</b> davranışı Arduino firmware yönlerine uygun şekilde düzeltildi.</p>
+  <div class="note"><b>Sonuç:</b> Harita, hareket ve RViz davranışı artık tutarlı. Bu belge, çalışan ayarların korunması ve ileride aynı arızaların hızlı teşhis edilmesi için referans kabul edilmelidir.</div>
+
+  <h1 id="mimari">2. Nihai mimari ve TF sorumlulukları</h1>
+  <h2>2.1 Veri akışı</h2>
+  <pre>Arduino/encoder ──► /wheel/odometry_raw ─┐
+                                           ├─► robot_localization EKF ─► /odometry/filtered
+Arduino/IMU ─────► /imu/data_raw ─────────┘                          └─► odom → base_link
+
+RPLidar A1 ──────► /scan ─────────────────────► slam_toolbox ──────────► /map ve map → odom
+
+URDF/Xacro ──────► robot_state_publisher ──────────────────────────────► base_link → sensör/tekerlek frame'leri</pre>
+  <h2>2.2 TF sahipliği</h2>
+  <table>
+    <tr><th>Dönüşüm</th><th>Tek yayıncı</th><th>Neden</th></tr>
+    <tr><td><code>map → odom</code></td><td><code>slam_toolbox</code></td><td>Lidar scan matching ve loop closure kaynaklı global düzeltmeyi taşır.</td></tr>
+    <tr><td><code>odom → base_link</code></td><td><code>robot_localization/ekf_node</code></td><td>Encoder ve IMU’dan kesintisiz yerel hareket tahmini üretir.</td></tr>
+    <tr><td><code>base_link → imu_link</code><br><code>base_link → laser_frame</code><br>tekerlek frame’leri</td><td><code>robot_state_publisher</code></td><td>URDF/Xacro geometrisini yayınlar.</td></tr>
+    <tr><td>Seri köprü dinamik TF’si</td><td>Kapalı</td><td><code>publish_odom_tf: false</code>; EKF ile TF çakışmasını engeller.</td></tr>
+  </table>
+  <div class="critical"><b>Kritik kural:</b> Aynı parent/child TF çiftini iki düğüm yayınlamamalıdır. İki EKF veya seri köprü + EKF birlikte <code>odom → base_link</code> yayımlarsa RViz pozu iki çözüm arasında sıçrar ve SLAM haritayı bozabilir.</div>
+
+  <h1 id="baslangic">3. SLAM öncesi başlangıç durumu</h1>
+  <table>
+    <tr><th>Bileşen</th><th>Başlangıç durumu</th><th>Risk</th><th>Yapılan işlem</th></tr>
+    <tr><td>Arduino JSON köprüsü</td><td>IMU, encoder ve odom verisi vardı.</td><td>Eksik paket doğrulaması, zamanlama ve reset koruması.</td><td>Protokol doğrulama, Arduino zamanı, sıçrama koruması ve testler eklendi.</td></tr>
+    <tr><td>Odometri topic’i</td><td>Genel <code>/odom</code> kullanımı.</td><td>Ham ve filtrelenmiş verinin karışması.</td><td>Ham veri <code>/wheel/odometry_raw</code>, EKF sonucu <code>/odometry/filtered</code> olarak ayrıldı.</td></tr>
+    <tr><td>TF</td><td>Seri köprü <code>odom → base_link</code> yayımlıyordu.</td><td>EKF eklendiğinde çift yayıncı.</td><td>Köprü TF’si varsayılan olarak kapatıldı.</td></tr>
+    <tr><td>Covariance</td><td>Odometri covariance alanları boştu.</td><td>Filtrenin ölçümü gerçek dışı kesin kabul etmesi.</td><td>Pose ve twist covariance değerleri eklendi.</td></tr>
+    <tr><td>EKF</td><td>Kurulum/ayar dosyası yoktu.</td><td>IMU ve encoder ayrı, ortak hareket tahmini yok.</td><td><code>ekf.yaml</code> oluşturuldu ve launch’a eklendi.</td></tr>
+    <tr><td>SLAM</td><td>Mapping launch ve SLAM ayarları yoktu.</td><td>Bileşenlerin elle ve yanlış kombinasyonla başlatılması.</td><td>Tek giriş noktası olan <code>mapping.launch.py</code> oluşturuldu.</td></tr>
+    <tr><td>Komut güvenliği</td><td>Son hareket komutu kalabiliyordu.</td><td>Teleop kapanınca robotun hareketi sürdürmesi.</td><td>0.5 s <code>cmd_vel</code> watchdog eklendi.</td></tr>
+  </table>
+
+  <h1 id="seri">4. Seri köprü ve odometri düzeltmeleri</h1>
+  <h2>4.1 Seri paket sözleşmesi</h2>
+  <p>Arduino her satırda bir JSON nesnesi gönderir. Zorunlu alanlar:</p>
+  <pre>{"t_ms":1121,"ax":-0.014365,"ay":0.002394,"az":9.81,
+ "gx":0.000224,"gy":0.000685,"gz":0.000116,
+ "enc_l":0,"enc_r":0}</pre>
+  <p><code>t_ms</code> Arduino açılışından itibaren milisaniyedir; ivmeler m/s², gyro değerleri rad/s, encoderler kümülatif tick sayısıdır. Parser, nesne olmayan JSON’u, eksik zorunlu alanları, dönüştürülemeyen değerleri, <code>NaN</code> ve sonsuz değerleri reddeder. İsteğe bağlı batarya ve sağlık alanları ayrıca işlenir.</p>
+  <h2>4.2 Güvenilirlik iyileştirmeleri</h2>
+  <table>
+    <tr><th>İyileştirme</th><th>Teknik davranış</th><th>SLAM’e katkısı</th></tr>
+    <tr><td>Cihaz tabanlı zaman</td><td>Odometri <code>dt</code> hesabı Jetson timer gecikmesinden değil Arduino <code>t_ms</code> farkından üretilir.</td><td>Seri tampon gecikmesi hız hesabını bozmaz.</td></tr>
+    <tr><td>32-bit wraparound</td><td>Milisaniye sayacının <code>0xFFFFFFFF → 0</code> geçişi doğru hesaplanır.</td><td>Uzun çalışma süresinde sahte negatif zaman farkı oluşmaz.</td></tr>
+    <tr><td>Reset algılama</td><td>Zaman geriye giderse veya veri aralığı 1000 ms’yi aşarsa encoder baseline yenilenir.</td><td>Arduino reseti robotu haritada aniden sıçratmaz.</td></tr>
+    <tr><td>Encoder sıçrama filtresi</td><td>Tek pakette 100000 tick üzeri değişim reddedilir.</td><td>Bozuk paket büyük poz/yaw atlamasına dönüşmez.</td></tr>
+    <tr><td>Tampon boşaltma</td><td>Bir timer turunda en fazla 10 seri paket işlenir.</td><td>Geri kalmış veri kontrollü şekilde eritilir.</td></tr>
+    <tr><td>Komut watchdog</td><td>0.5 s yeni <code>/cmd_vel</code> gelmezse <code>S</code> gönderilir.</td><td>Kontrol süreci kesildiğinde güvenli duruş sağlar.</td></tr>
+    <tr><td>Kapanış güvenliği</td><td>Düğüm kapanırken <code>S</code> gönderip portu kapatır.</td><td>Son hareket komutunun firmware’de kalma riskini azaltır.</td></tr>
+  </table>
+  <h2>4.3 Odometri matematiği</h2>
+  <pre>metre/tick = (2π × wheel_radius) / encoder_ticks_per_rev
+d_left     = Δtick_left  × metre/tick
+d_right    = Δtick_right × metre/tick
+d_center   = (d_left + d_right) / 2
+d_theta    = ((d_right - d_left) / wheel_base) × wheel_yaw_scale</pre>
+  <p>Poz, dönüşün orta nokta yaklaşımıyla güncellenir. Yaw her adımda <code>atan2(sin θ, cos θ)</code> ile −π…+π aralığına normalize edilir. Nihai fiziksel değerler <code>wheel_radius=0.04 m</code>, <code>encoder_ticks_per_rev=7000</code> ve <code>wheel_base=0.20 m</code>’dir.</p>
+  <h2>4.4 Topic ayrımı ve covariance</h2>
+  <p>Seri köprü ham ölçümü <code>/wheel/odometry_raw</code> olarak yayınlar. EKF sonucu ayrı topic’te tutulur. Ölçülmeyen Z, roll ve pitch eksenlerinde yüksek covariance kullanılır; düzlemsel X/Y/yaw ile hız bileşenlerinde daha gerçekçi başlangıç değerleri tanımlanır. Bu ayrım hem filtre davranışını anlaşılır kılar hem de rosbag analizinde ham ölçüm ile filtre sonucunun doğrudan karşılaştırılmasını sağlar.</p>
+
+  <h1 id="ekf">5. EKF ve sensör füzyonu</h1>
+  <h2>5.1 Yapılandırma yaklaşımı</h2>
+  <table>
+    <tr><th>Ayar</th><th>Değer</th><th>Gerekçe</th></tr>
+    <tr><td><code>frequency</code></td><td>30 Hz</td><td>10 Hz sensör girdileri arasında düzenli filtre çıktısı ve TF sağlar.</td></tr>
+    <tr><td><code>sensor_timeout</code></td><td>0.2 s</td><td>Beklenen 10 Hz girdide kısa kesintileri tespit eder.</td></tr>
+    <tr><td><code>two_d_mode</code></td><td>true</td><td>Robot zeminde çalıştığı için Z, roll ve pitch hareketlerini bastırır.</td></tr>
+    <tr><td><code>world_frame</code></td><td>odom</td><td>EKF yerel, sürekli odometri üretir; global düzeltme SLAM’e aittir.</td></tr>
+    <tr><td><code>publish_tf</code></td><td>true</td><td><code>odom → base_link</code> dönüşümünün tek sahibi EKF’dir.</td></tr>
+  </table>
+  <h2>5.2 Füzyona giren bileşenler</h2>
+  <ul>
+    <li><b>Wheel odometry:</b> ileri hız <code>vx</code>, diferansiyel robot kısıtı olarak <code>vy=0</code>, wheel tabanlı yaw hızı.</li>
+    <li><b>IMU:</b> yalnızca gyro-z açısal hızı.</li>
+    <li><b>IMU orientation:</b> firmware quaternion üretmediği için kullanılmaz; mesajda <code>orientation_covariance[0] = -1</code> ile bilinmiyor işaretlenir.</li>
+    <li><b>Lineer ivme:</b> topic’te yayımlanır ancak mevcut EKF yapılandırmasında füzyona alınmaz.</li>
+  </ul>
+  <p><code>vy=0</code> kısıtı önemlidir: diferansiyel sürüşlü robot ideal olarak yana kaymaz. Bu bilgi füzyona alınmadığında yalnızca hız ölçümleriyle yanal pozisyon covariance’ı zamanla gereksiz büyüyebilir.</p>
+
+  <h1 id="sabit">6. Sabit durum testi ve değerlendirme</h1>
+  <p>İlk sabit kayıt <code>/home/orin/stationary_ekf_check</code> altında alındı. Robot yaklaşık 92.6 saniye boyunca hareket ettirilmedi.</p>
+  <table>
+    <tr><th>Ölçüm</th><th>Sonuç</th><th>Yorum</th></tr>
+    <tr><td><code>/imu/data_raw</code> frekansı</td><td>10.00 Hz</td><td>Kararlı.</td></tr>
+    <tr><td><code>/wheel/odometry_raw</code> frekansı</td><td>10.00 Hz</td><td>Kararlı.</td></tr>
+    <tr><td><code>/odometry/filtered</code> gözlenen frekans</td><td>10.00 Hz</td><td>Kayıt içeriğinde sensör güncellemeleriyle tutarlı.</td></tr>
+    <tr><td>Ortalama ivme X/Y/Z</td><td>−0.0043 / −0.0022 / 9.8081 m/s²</td><td>Z ekseni yerçekimiyle uyumlu; X/Y ofseti küçük.</td></tr>
+    <tr><td>İvme vektörü büyüklüğü</td><td>9.8084 m/s²</td><td>Beklenen yaklaşık 9.81 m/s² ile uyumlu.</td></tr>
+    <tr><td>Gyro-z ortalama bias</td><td>−0.0000808 rad/s</td><td>Küçük sabit ofset.</td></tr>
+    <tr><td>Gyro-z standart sapma</td><td>0.001399 rad/s</td><td>Sabit durum için kabul edilebilir gürültü düzeyi.</td></tr>
+    <tr><td>EKF yaw sürüklenmesi</td><td>Yaklaşık 0.34° / 92 s</td><td>Küçük; gyro bias ve yalnız hız füzyonuyla beklenebilir.</td></tr>
+    <tr><td>Encoder hareketi</td><td>0</td><td>Araç hareketsizken sahte hareket yok.</td></tr>
+    <tr><td>Diagnostics</td><td>OK</td><td>Filtre ve sensör akışında kritik durum görülmedi.</td></tr>
+  </table>
+  <p>Bu test, USB portunun görünmesiyle topic verisinin gerçekten kullanılabilir olmasının farklı şeyler olduğunu gösterdi. İşletim sistemi cihazı görse bile veri hızı, timestamp, frame_id, covariance ve hareketsiz gürültü ayrıca doğrulanmalıdır.</p>
+
+  <h1 id="slam-altyapi">7. SLAM altyapısının kurulması</h1>
+  <h2>7.1 Eklenen ana dosyalar</h2>
+  <table>
+    <tr><th>Dosya</th><th>Görev</th></tr>
+    <tr><td><code>src/robot_bringup/config/ekf.yaml</code></td><td>Wheel odometry + IMU gyro-z füzyonu ve <code>odom → base_link</code> TF ayarları.</td></tr>
+    <tr><td><code>src/robot_bringup/config/slam_toolbox.yaml</code></td><td>Gerçek robot online async mapping, scan matching ve loop closure parametreleri.</td></tr>
+    <tr><td><code>src/robot_bringup/config/mapping.rviz</code></td><td><code>map</code> fixed frame, map/scan/robot/TF görünümleri.</td></tr>
+    <tr><td><code>src/robot_bringup/launch/mapping.launch.py</code></td><td>Donanım, robot modeli, EKF, SLAM ve RViz için tek launch giriş noktası.</td></tr>
+    <tr><td><code>src/arduino_bridge/test/test_serial_bridge.py</code></td><td>Geçerli/geçersiz paket ayrımı ve cihaz zamanı wraparound testleri.</td></tr>
+  </table>
+  <h2>7.2 SLAM temel ayarları</h2>
+  <table>
+    <tr><th>Parametre</th><th>Değer</th><th>Açıklama</th></tr>
+    <tr><td>Çalışma modu</td><td>online async mapping</td><td>Gerçek zamanlı haritalama.</td></tr>
+    <tr><td>Scan topic</td><td><code>/scan</code></td><td>RPLidar A1 verisi.</td></tr>
+    <tr><td>Çözünürlük</td><td>0.05 m</td><td>Occupancy grid hücre boyutu.</td></tr>
+    <tr><td>Lidar aralığı</td><td>0.20–12.0 m</td><td>Sürücü ve ortam için seçilen kullanılabilir aralık.</td></tr>
+    <tr><td>Harita güncelleme</td><td>2.0 s</td><td>RViz map yenileme periyodu.</td></tr>
+    <tr><td>Minimum hareket</td><td>0.10 m / 0.10 rad</td><td>Yeni scan işleme hareket eşikleri.</td></tr>
+    <tr><td>Loop closure</td><td>Açık</td><td>Önceden görülen alanlara dönüşte global tutarlılık.</td></tr>
+  </table>
+
+  <div class="pagebreak"></div>
+  <h1 id="olaylar">8. Haritalama hataları ve kök neden analizi</h1>
+  <h2>8.1 Olay özeti</h2>
+  <table>
+    <tr><th>Test</th><th>Belirti</th><th>Kök neden</th><th>Düzeltme</th></tr>
+    <tr><td><code>first_mapping_test</code></td><td>Robot hareketsizken RViz pozu kendi ekseninde dönüyor, sonra geri geliyor ve bunu tekrarlıyordu.</td><td>Aynı anda iki bringup/mapping zinciri; iki EKF ve tekrarlanan yayıncılar.</td><td>Tüm eski süreçler kapatıldı; yalnız <code>mapping.launch.py</code> çalıştırıldı; publisher sayıları kontrol edildi.</td></tr>
+    <tr><td><code>slam_rosbag</code></td><td>Başta düzgün harita, ilerledikçe duvarların üst üste binmesi.</td><td>Wheel yaw ile IMU gyro-z ters işarette ve ölçekleri uyumsuz.</td><td>Korelasyon/net yaw/map→odom sıçramaları analiz edildi; yön ve wheel-base kalibrasyonuna geçildi.</td></tr>
+    <tr><td><code>slam_rosbag2</code> + <code>map2</code></td><td>Harita eskisinden kötü; merkez çevresinde yıldız biçimli bindirme; fiziksel yön ters.</td><td>Ara düzeltmede yanlış sensörün, yani IMU’nun işareti çevrilmişti; fiziksel referans kaybedilmişti.</td><td>IMU yeniden +1.0 yapıldı; yalnız wheel yaw −1.0 yapıldı; wheel-base 0.20 m seçildi.</td></tr>
+    <tr><td>Son test</td><td>Harita iyi, gerçek robot ve RViz uyumlu; yalnız J/L tuşları ters.</td><td>Firmware A/D motor komut eşlemesi ROS angular.z standardıyla ters kalmıştı.</td><td>Yalnız teleop→seri komut eşlemesi değiştirildi; odometri/TF’ye dokunulmadı.</td></tr>
+  </table>
+
+  <h2>8.2 Hareketsiz robotun dönmesi: çift yayıncı olayı</h2>
+  <p><code>first_mapping_test</code> kaydında EKF çıktıları yaklaşık 0° ile −86° arasında dönüşümlü görünüyordu. 508 ardışık örneğin 500’ünde 30°’den büyük sıçrama saptandı; yaklaşık 0° çevresinde 259, −86° çevresinde 250 mesaj vardı. Bu dağılım tek bir filtrenin yavaş driftine değil, aynı topic/TF üzerinde iki farklı çözümün sırayla görünmesine işaret etti.</p>
+  <p>Çalışan süreçlerde <code>hardwareRobotmodel.launch.py</code> açıkken ayrıca <code>mapping.launch.py</code> başlatıldığı belirlendi. Her ikisi de robot modeli ve EKF başlattığı için iki filtre aynı isim/topic/TF alanında yarışıyordu. Çözüm, çalışma modlarını birbirinin üzerine bindirmemek ve mapping sırasında yalnız mapping launch kullanmaktır.</p>
+  <div class="warning"><b>Operasyon kuralı:</b> <code>hardwareRobotmodel.launch.py</code> görselleştirme/EKF modu ile <code>mapping.launch.py</code> haritalama modu aynı anda çalıştırılmamalıdır.</div>
+
+  <h2>8.3 İlk hareketli haritanın üst üste binmesi</h2>
+  <p><code>/home/orin/slam_rosbag</code> yaklaşık 200 saniye ve 7.15 m hareket içeriyordu. Wheel yaw hızı ile IMU gyro-z arasında <b>−0.962</b> korelasyon bulundu. Mutlak IMU yaw hızı wheel yaw hızının yaklaşık <b>1.44 katı</b> idi. Yani sensörler aynı dönüşü hem ters yönde hem farklı büyüklükte raporluyordu.</p>
+  <table>
+    <tr><th>Ölçüm</th><th>Değer</th><th>Anlamı</th></tr>
+    <tr><td>Ham wheel odometry net yaw</td><td>+124.31°</td><td>Encoder hesabının toplam dönüş tahmini.</td></tr>
+    <tr><td>EKF net yaw</td><td>−9.27°</td><td>Ters yönlü ölçümlerin birbirini bastırdığı tutarsız sonuç.</td></tr>
+    <tr><td><code>map → odom</code> toplam konum düzeltmesi</td><td>7.71 m</td><td>SLAM yerel odometriyi sürekli telafi etmeye çalışıyor.</td></tr>
+    <tr><td><code>map → odom</code> toplam açı düzeltmesi</td><td>111.38°</td><td>Yerel yaw tahmini scan matching ile uyuşmuyor.</td></tr>
+    <tr><td>En büyük konum/açı sıçraması</td><td>2.14 m / 21.0°</td><td>Aynı duvarın farklı pozlarda yeniden çizilmesine yol açabilecek kadar büyük.</td></tr>
+  </table>
+  <p>Buradaki harita bozulması yalnızca slam_toolbox ince ayarıyla çözülemezdi; temel yerel odometri yanlışken scan matcher her taramada büyük düzeltme yapmak zorunda kalıyordu. Öncelik sensör yönü ve fiziksel geometriyi düzeltmek oldu.</p>
+
+  <h2>8.4 Yanlış ara düzeltme ve map2</h2>
+  <p>İlk yorumda yalnız komut işaretine bakılarak IMU gyro-z ters çevrildi ve wheel-base yaklaşık 0.25 m yapıldı. Bu işlem wheel ve IMU’yu sayısal olarak aynı işarete yaklaştırdı fakat ikisini de fiziksel robot dönüşünün tersine taşıdı. Sonraki gerçek sürüş gözlemi belirleyici oldu: ham IMU fiziksel yönle zaten uyumluydu; yanlış olan encoder tabanlı wheel yaw yönüydü.</p>
+  <table>
+    <tr><th><code>slam_rosbag2</code> ölçümü</th><th>Değer</th></tr>
+    <tr><td>Wheel–IMU korelasyonu</td><td>+0.983; sayısal uyum iyi fakat fiziksel işaret ters</td></tr>
+    <tr><td>Hareket mesafesi</td><td>4.92 m</td></tr>
+    <tr><td><code>map → odom</code> konum düzeltmesi</td><td>6.71 m</td></tr>
+    <tr><td><code>map → odom</code> açı düzeltmesi</td><td>229.86°</td></tr>
+    <tr><td>En büyük açı sıçraması</td><td>21.0°</td></tr>
+  </table>
+  <p>Bu olay önemli bir yöntem dersidir: iki sensörün birbiriyle korelasyonu tek başına doğru işareti kanıtlamaz. En az bir fiziksel referans testi gerekir: robot gerçekten sola döndüğünde ROS REP-103 gereği pozitif yaw ve pozitif <code>angular.z</code> görülmelidir.</p>
+
+  <h1 id="kalibrasyon">9. Nihai yön ve geometri kalibrasyonu</h1>
+  <h2>9.1 Wheel-base hesabı</h2>
+  <p><code>slam_rosbag2</code> kaydında wheel-base 0.25 m iken <code>|IMU yaw hızı| ≈ 1.25 × |wheel yaw hızı|</code> ölçüldü. Diferansiyel sürüş hesabında yaw hızı wheel-base ile ters orantılı olduğundan etkin açıklık:</p>
+  <pre>wheel_base_yeni = 0.25 / 1.25 ≈ 0.20 m</pre>
+  <p>Bu değer URDF’deki sağ–sol tekerlek geometrisiyle de uyumluydu. Böylece yalnız rosbag oranı değil, fiziksel model de sonucu destekledi.</p>
+  <h2>9.2 İşaret doğrulaması</h2>
+  <table>
+    <tr><th>Kaynak</th><th>Fiziksel sola dönüşte beklenen</th><th>Nihai çarpan</th></tr>
+    <tr><td>IMU gyro-z</td><td>Pozitif</td><td><code>imu_gyro_z_scale: 1.0</code></td></tr>
+    <tr><td>Encoder wheel yaw</td><td>Pozitif; ham hesap ters olduğu için çevrilir</td><td><code>wheel_yaw_scale: -1.0</code></td></tr>
+    <tr><td>EKF yaw / TF</td><td>Pozitif ve gerçek robotla aynı yön</td><td>İki kaynağın füzyon sonucu</td></tr>
+  </table>
+  <div class="note"><b>Nihai kalibrasyon:</b> <code>wheel_base=0.20</code>, <code>imu_gyro_z_scale=1.0</code>, <code>wheel_yaw_scale=-1.0</code>.</div>
+
+  <h1 id="teleop">10. Teleop yön düzeltmesi</h1>
+  <p>Sensör ve TF zinciri fiziksel robotla uyumlu hâle geldikten sonra teleop’ta <b>L sola, J sağa</b> gidiyordu. Bu noktada sensör işaretlerini yeniden değiştirmek doğru olmazdı; RViz ve gerçek araç zaten uyumluydu. Sorun yalnız komut katmanında çözüldü.</p>
+  <pre>elif msg.angular.z &gt; 0.0:  # teleop J, pozitif yaw, fiziksel sol
+    command = 'D'
+elif msg.angular.z &lt; 0.0:  # teleop L, negatif yaw, fiziksel sağ
+    command = 'A'</pre>
+  <table>
+    <tr><th>Tuş</th><th>ROS komutu</th><th>Arduino komutu</th><th>Nihai fiziksel hareket</th></tr>
+    <tr><td>J</td><td><code>angular.z &gt; 0</code></td><td>D</td><td>Sol</td></tr>
+    <tr><td>L</td><td><code>angular.z &lt; 0</code></td><td>A</td><td>Sağ</td></tr>
+    <tr><td>I</td><td><code>linear.x &gt; 0</code></td><td>W</td><td>İleri</td></tr>
+    <tr><td>, / geri</td><td><code>linear.x &lt; 0</code></td><td>X</td><td>Geri</td></tr>
+    <tr><td>Dur</td><td>Sıfır twist veya timeout</td><td>S</td><td>Dur</td></tr>
+  </table>
+
+  <h1 id="uyarilar">11. Uyarılar ve yorumlama rehberi</h1>
+  <table>
+    <tr><th>Uyarı/belirti</th><th>Muhtemel anlam</th><th>Kontrol</th></tr>
+    <tr><td><code>Gecersiz seri paket yok sayildi</code></td><td>Satır geçerli JSON değil, zorunlu alan eksik, sayısal dönüşüm başarısız veya NaN/Inf içeriyor. Açılışta tek sefer yarım satır olabilir; sürekli tekrar protokol/hat sorunudur.</td><td>Arduino seri çıktısını ham izle; baudrate 115200’ü, tek satır JSON’u ve alan adlarını doğrula.</td></tr>
+    <tr><td><code>cmd_vel zaman asimi</code></td><td>0.5 s komut gelmedi ve güvenlik için dur komutu gönderildi.</td><td>Teleop <code>repeat_rate</code> ve <code>key_timeout</code> değerlerini kontrol et. Güvenlik davranışıdır.</td></tr>
+    <tr><td>RViz message-filter queue dolması</td><td>TF gecikmesi veya RViz’in taramaları zamanında işleyememesi.</td><td>TF timestamp’leri, sistem yükü ve scan hızını kontrol et. Tek başına harita bozulmasının kanıtı değildir.</td></tr>
+    <tr><td>Duvarların çift çizilmesi</td><td>Yaw ölçek/işaret hatası, wheel slip, TF sıçraması veya büyük scan matching düzeltmeleri.</td><td>Wheel–IMU işareti, <code>map→odom</code> sıçramaları ve tek yayıncı kuralını kontrol et.</td></tr>
+    <tr><td>Robot hareketsizken poz sıçraması</td><td>Çift EKF/TF yayıncısı veya timestamp problemi.</td><td>Process listesi ve topic publisher sayısını denetle.</td></tr>
+  </table>
+
+  <h1 id="nihai">12. Nihai parametre özeti</h1>
+  <h2>12.1 Arduino bridge</h2>
+  <pre>wheel_radius:          0.04
+wheel_base:            0.20
+encoder_ticks_per_rev: 7000.0
+imu_gyro_z_scale:      1.0
+wheel_yaw_scale:       -1.0
+odom_topic:            /wheel/odometry_raw
+publish_odom_tf:       false
+cmd_vel_timeout:       0.5
+max_encoder_delta:     100000
+max_serial_packets:    10
+max_device_dt_ms:      1000</pre>
+  <h2>12.2 EKF</h2>
+  <pre>frequency: 30.0 Hz
+two_d_mode: true
+world_frame: odom
+girdiler:
+  /wheel/odometry_raw → vx, vy=0, yaw rate
+  /imu/data_raw       → gyro-z
+çıktılar:
+  /odometry/filtered
+  odom → base_link</pre>
+  <h2>12.3 slam_toolbox</h2>
+  <pre>scan_topic:       /scan
+base_frame:       base_link
+odom_frame:       odom
+map_frame:        map
+resolution:       0.05 m
+min_laser_range:  0.20 m
+max_laser_range:  12.0 m
+do_loop_closing:  true
+use_scan_matching:true</pre>
+
+  <div class="pagebreak"></div>
+  <h1 id="komutlar">13. Kullanılan komutlar</h1>
+  <h2>13.1 Paket kurulumu ve kontrolü</h2>
+  <pre>sudo apt update
+sudo apt install ros-humble-robot-localization \
+  ros-humble-slam-toolbox \
+  ros-humble-teleop-twist-keyboard
+
+ros2 pkg prefix robot_localization
+ros2 pkg prefix slam_toolbox
+ros2 pkg prefix teleop_twist_keyboard
+ros2 pkg prefix rplidar_ros</pre>
+
+  <h2>13.2 USB ve seri port</h2>
+  <pre>lsusb
+ls -l /dev/ttyUSB* /dev/ttyACM* 2&gt;/dev/null
+ls -l /dev/arduino /dev/rplidar
+groups
+sudo dmesg -w</pre>
+  <p>Bu sistemde görülen cihazlar CH340 (<code>1a86:7523</code>) ve CP210x (<code>10c4:ea60</code>) idi. <code>/dev/rplidar → ttyUSB0</code> bağı geçerliydi. Arduino için udev bağının hedefi de gerçek cihaz düğümüne çözülmelidir.</p>
+  <pre>sudo install -m 644 scripts/usb_serial/99-kasif-usb-serial.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+sudo usermod -aG dialout $USER</pre>
+  <p class="small">Grup değişiminden sonra oturumu kapatıp açmak veya sistemi yeniden başlatmak gerekir.</p>
+
+  <h2>13.3 Derleme ve test</h2>
+  <pre>cd ~/DiffDrive_Slamtoolbox
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+
+colcon test
+colcon test-result --verbose</pre>
+  <p>Son kayıtlı doğrulama: 3 paket derlendi; 8 test, 0 hata, 0 başarısızlık, 1 atlanan test.</p>
+
+  <h2>13.4 Mapping başlatma</h2>
+  <pre>cd ~/DiffDrive_Slamtoolbox
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch robot_bringup mapping.launch.py</pre>
+  <div class="warning"><b>Not:</b> Bu komut çalışırken ikinci bir terminalde <code>hardwareRobotmodel.launch.py</code> başlatılmamalıdır.</div>
+
+  <h2>13.5 Teleop</h2>
+  <pre>source /opt/ros/humble/setup.bash
+source ~/DiffDrive_Slamtoolbox/install/setup.bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+  --ros-args \
+  -p speed:=0.08 \
+  -p turn:=0.25 \
+  -p repeat_rate:=10.0 \
+  -p key_timeout:=0.5</pre>
+  <p>Seri köprü hız değerini sürekli PWM büyüklüğüne dönüştürmüyor; firmware yön karakterleri <code>W/X/A/D/S</code> ile sürüşü uyguluyor. Gerçek hızın önemli bölümü firmware tarafındaki motor kontrolünden gelir.</p>
+
+  <h2>13.6 Topic ve sensör kontrolleri</h2>
+  <pre>ros2 topic list
+ros2 topic hz /imu/data_raw
+ros2 topic hz /wheel/odometry_raw
+ros2 topic hz /odometry/filtered
+ros2 topic hz /scan
+ros2 topic hz /map
+
+ros2 topic echo /imu/data_raw --once
+ros2 topic echo /wheel/odometry_raw --once
+ros2 topic echo /odometry/filtered --once
+ros2 topic echo /scan --once</pre>
+
+  <h2>13.7 TF ve yayıncı kontrolleri</h2>
+  <pre>ros2 run tf2_ros tf2_echo odom base_link
+ros2 run tf2_ros tf2_echo map base_link
+ros2 run tf2_ros tf2_echo base_link imu_link
+ros2 run tf2_ros tf2_echo base_link laser_frame
+
+ros2 topic info /odometry/filtered --verbose
+ros2 topic info /scan --verbose
+ros2 topic info /tf --verbose</pre>
+
+  <h2>13.8 Çift süreç kontrolü</h2>
+  <pre>ps aux | grep -E \
+  "ekf_node|serial_bridge|robot_state_publisher|rplidar|slam_toolbox" \
+  | grep -v grep
+
+ros2 daemon stop
+ros2 daemon start</pre>
+  <p>Beklenen: bir <code>serial_bridge</code>, bir <code>rplidar_node</code>, bir <code>robot_state_publisher</code>, bir <code>ekf_node</code> ve bir <code>slam_toolbox</code> süreci.</p>
+
+  <h2>13.9 Sabit durum rosbag’i</h2>
+  <pre>ros2 bag record \
+  -o stationary_ekf_check \
+  -d 30 \
+  /imu/data_raw \
+  /wheel/odometry_raw \
+  /odometry/filtered \
+  /diagnostics \
+  /tf \
+  /tf_static</pre>
+
+  <h2>13.10 Mapping rosbag’i</h2>
+  <pre>ros2 bag record \
+  -o slam_mapping_check \
+  /scan \
+  /map \
+  /imu/data_raw \
+  /wheel/odometry_raw \
+  /wheel/encoders \
+  /odometry/filtered \
+  /tf \
+  /tf_static \
+  /diagnostics \
+  /cmd_vel \
+  /rosout</pre>
+
+  <h2>13.11 Rosbag inceleme ve oynatma</h2>
+  <pre>ros2 bag info ~/slam_mapping_check
+ros2 bag play ~/slam_mapping_check --clock
+
+# Oynatma ile çalışan düğümlerde gerekiyorsa:
+ros2 param set /slam_toolbox use_sim_time true</pre>
+  <p class="small">Canlı donanım topic’leriyle rosbag playback topic’lerinin aynı anda çakışmamasına dikkat edilmelidir.</p>
+
+  <h2>13.12 Harita kaydetme</h2>
+  <pre>mkdir -p ~/maps
+ros2 run nav2_map_server map_saver_cli -f ~/maps/kasif_map</pre>
+  <p>Beklenen çıktı: <code>kasif_map.yaml</code> ve <code>kasif_map.pgm</code>. Her iyi testte farklı bir dosya adı kullanmak önceki haritayı yanlışlıkla ezmeyi önler.</p>
+
+  <h1 id="prosedur">14. Önerilen haritalama prosedürü</h1>
+  <ol>
+    <li>Robotu düz ve kaymayan bir zemine yerleştirin; lidar görüş alanını kapatmayın.</li>
+    <li>USB bağlarını, <code>/dev/arduino</code> ve <code>/dev/rplidar</code> symlink’lerini doğrulayın.</li>
+    <li>Eski ROS süreçlerini kontrol edin. Gerekirse düzgün biçimde kapatın.</li>
+    <li>Yeni terminalde ROS ortamını source edin ve yalnız <code>mapping.launch.py</code> başlatın.</li>
+    <li><code>/scan</code>, ham odom, IMU ve filtrelenmiş odom frekanslarını doğrulayın.</li>
+    <li>TF zincirinde <code>map → odom → base_link → laser_frame</code> akışını kontrol edin.</li>
+    <li>Robotu ilk 5–10 saniye hareketsiz tutun; başlangıç IMU/TF davranışını gözleyin.</li>
+    <li>Teleop’u düşük ileri ve dönüş hızıyla başlatın.</li>
+    <li>Önce kısa düz ileri–geri testi yapın; RViz ve fiziksel yönü karşılaştırın.</li>
+    <li>Kısa sol/sağ dönüş testi yapın; sol dönüşte yaw’ın pozitif olduğundan emin olun.</li>
+    <li>Haritalama alanında yavaş, yumuşak ve geniş dönüşlerle ilerleyin. Ani yerinde dönüş, patinaj ve çarpışmadan kaçının.</li>
+    <li>Aynı koridor ve odalara farklı yönlerden dönerek loop closure için yeterli ortak geometri sağlayın.</li>
+    <li>RViz’de lidar uçlarının mevcut duvarların üzerine oturduğunu izleyin. Çift çizgi başlarsa sürüşü durdurun.</li>
+    <li>Tüm test boyunca önerilen topic’lerle rosbag kaydı alın.</li>
+    <li>Başlangıca yakın bir bölgeye dönüp kapanışı kontrol edin; harita iyi ise benzersiz adla kaydedin.</li>
+  </ol>
+
+  <h1 id="kabul">15. Kabul kriterleri ve AMCL’ye geçiş</h1>
+  <h2>15.1 SLAM kabul kontrol listesi</h2>
+  <table>
+    <tr><th>Kriter</th><th>Durum</th><th>Doğrulama</th></tr>
+    <tr><td>Gerçek robot ve RViz ileri/geri yönleri aynı</td><td class="status-ok">Sağlandı</td><td>Fiziksel test.</td></tr>
+    <tr><td>Gerçek robot ve RViz sağ/sol yönleri aynı</td><td class="status-ok">Sağlandı</td><td>Fiziksel test.</td></tr>
+    <tr><td>Teleop J=sol, L=sağ</td><td class="status-ok">Sağlandı</td><td>Komut eşlemesi düzeltildi.</td></tr>
+    <tr><td>TF çift yayıncı yok</td><td class="status-ok">Yapılandırmada sağlandı</td><td>Her çalıştırmada process/topic kontrolü önerilir.</td></tr>
+    <tr><td>Sabit durumda encoder sahte hareket üretmiyor</td><td class="status-ok">Sağlandı</td><td>92.6 s sabit rosbag.</td></tr>
+    <tr><td>IMU yerçekimi büyüklüğü doğru</td><td class="status-ok">Sağlandı</td><td>9.8084 m/s².</td></tr>
+    <tr><td>Harita önceki testlere göre düzgün ve bindirme yok</td><td class="status-ok">Kullanıcı gözlemiyle sağlandı</td><td>Son mapping testi.</td></tr>
+    <tr><td>Firmware kaynak kodu projede sürümlenmiş</td><td class="status-open">Açık madde</td><td>Kullanılan <code>.ino</code> ve pin şeması repoya eklenmeli.</td></tr>
+  </table>
+
+  <h2>15.2 AMCL’ye geçmeden önce</h2>
+  <ul>
+    <li>Son iyi haritanın PGM/YAML çiftini yedekleyin ve YAML içindeki <code>image</code> yolunu doğrulayın.</li>
+    <li>Mapping modunda çalışan slam_toolbox’ı kapatın; lokalizasyon modunda aynı TF’yi AMCL üstlenmelidir.</li>
+    <li>EKF yerel odometri üretmeye devam etmeli; <code>odom → base_link</code> yine EKF’ye ait olmalıdır.</li>
+    <li>AMCL, kayıtlı harita ve <code>/scan</code> kullanarak <code>map → odom</code> yayımlamalıdır.</li>
+    <li>Lidar frame ve robot footprint/base frame seçimleri Nav2 ile aynı olmalıdır.</li>
+    <li>Başlangıç pozu RViz’de <i>2D Pose Estimate</i> ile verilerek fiziksel konumla karşılaştırılmalıdır.</li>
+  </ul>
+  <pre>Mapping modu:      slam_toolbox → map → odom
+Lokalizasyon modu: AMCL         → map → odom
+Her iki modda:     EKF          → odom → base_link</pre>
+
+  <h1 id="ekler">16. Ekler</h1>
+  <h2>Ek A — Ana topic sözleşmesi</h2>
+  <table>
+    <tr><th>Topic</th><th>Mesaj türü</th><th>Kaynak</th><th>Kullanıcı</th></tr>
+    <tr><td><code>/imu/data_raw</code></td><td><code>sensor_msgs/Imu</code></td><td>serial_bridge</td><td>EKF, analiz</td></tr>
+    <tr><td><code>/wheel/odometry_raw</code></td><td><code>nav_msgs/Odometry</code></td><td>serial_bridge</td><td>EKF, analiz</td></tr>
+    <tr><td><code>/odometry/filtered</code></td><td><code>nav_msgs/Odometry</code></td><td>EKF</td><td>İzleme, Nav2</td></tr>
+    <tr><td><code>/scan</code></td><td><code>sensor_msgs/LaserScan</code></td><td>RPLidar</td><td>slam_toolbox / AMCL</td></tr>
+    <tr><td><code>/map</code></td><td><code>nav_msgs/OccupancyGrid</code></td><td>slam_toolbox</td><td>RViz, map saver</td></tr>
+    <tr><td><code>/cmd_vel</code></td><td><code>geometry_msgs/Twist</code></td><td>Teleop/Nav2</td><td>serial_bridge</td></tr>
+    <tr><td><code>/tf</code>, <code>/tf_static</code></td><td>TF mesajları</td><td>EKF, SLAM, robot_state_publisher</td><td>Tüm konumsal bileşenler</td></tr>
+  </table>
+
+  <h2>Ek B — Hızlı arıza ayırma sırası</h2>
+  <ol>
+    <li><b>Robot yanlış yöne gidiyor:</b> Önce fiziksel komut eşlemesini kontrol et; sensör işaretlerini yalnız RViz/odom da yanlışsa değiştir.</li>
+    <li><b>RViz yanlış, robot doğru:</b> IMU ve wheel yaw işaretlerini fiziksel sol dönüşe göre karşılaştır.</li>
+    <li><b>Robot sabitken RViz sıçrıyor:</b> Çift süreç/publisher ve TF timestamp kontrolü yap.</li>
+    <li><b>Harita yavaşça açılıyor:</b> Wheel-base, tekerlek çapı, encoder tick/rev ve slip’i kontrol et.</li>
+    <li><b>Harita bir anda atlıyor:</b> <code>map→odom</code> sıçraması, encoder reseti, seri paket ve loop closure olayını incele.</li>
+    <li><b>Scan kayboluyor:</b> USB port, lidar sürücüsü, frame_id ve TF zincirini kontrol et.</li>
+  </ol>
+
+  <h2>Ek C — Sürüm kontrolünde korunması gereken dosyalar</h2>
+  <pre>src/arduino_bridge/arduino_bridge/serial_bridge.py
+src/arduino_bridge/test/test_serial_bridge.py
+src/robot_bringup/config/arduino_bridge.yaml
+src/robot_bringup/config/ekf.yaml
+src/robot_bringup/config/slam_toolbox.yaml
+src/robot_bringup/config/mapping.rviz
+src/robot_bringup/launch/hardware.launch.py
+src/robot_bringup/launch/mapping.launch.py
+src/robot_description/
+docs/serial-protocol.md
+docs/robot_bringup.md</pre>
+
+  <h2>Ek D — Son değerlendirme</h2>
+  <p>Bu çalışmada harita hatasının tek bir SLAM parametresinden değil, sistem bütünündeki yön, ölçek ve yayıncı sahipliği sorunlarından kaynaklandığı gösterildi. Rosbag ölçümleri fiziksel gözlemle birlikte kullanılarak yanlış sensör işareti ayrıştırıldı; TF mimarisi tek yayıncı prensibine getirildi; seri köprü güvenli ve test edilebilir hâle getirildi. Son kullanıcı doğrulamasına göre map ve hareket artık başarılıdır. Bundan sonraki değişikliklerde nihai kalibrasyon değerleri rastgele değiştirilmemeli; her değişiklik aynı sabit test + kontrollü dönüş + mapping rosbag prosedürüyle yeniden doğrulanmalıdır.</p>
+
+  <p class="small">Belge sonu — Kaşif Çelebi SLAM Hazırlık, Kalibrasyon ve Hata Giderme Raporu, sürüm 1.0.</p>
+</body>
+</html>

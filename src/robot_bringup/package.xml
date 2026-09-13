@@ -1,4 +1,10 @@
 <?xml version="1.0"?>
+<!--
+Amaç: robot_bringup ROS 2 paketinin kimliğini ve bağımlılıklarını bildirir.
+Çalışma: ROS 2 araçları paket bilgilerini ve başlatma, sürücüler, EKF, SLAM ve görselleştirme
+bağımlılıklarını bu manifestten okur; derleme türü ament_python olarak seçilir.
+-->
+
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>robot_bringup</name>
@@ -11,7 +17,16 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>arduino_bridge</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
   <exec_depend>rplidar_ros</exec_depend>
+  <exec_depend>robot_description</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>xacro</exec_depend>
 
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

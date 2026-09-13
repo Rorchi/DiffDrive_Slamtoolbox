@@ -1,3 +1,9 @@
+<!--
+Amaç: Projenin genel yapısını ve başlangıç adımlarını açıklar.
+Çalışma: Çalışma alanını derleme ve seri köprüyü başlatma komutlarını sunar;
+ayrıntılı donanım, seri protokol ve kurulum belgelerine yönlendirir.
+-->
+
 # DiffDrive Arduino Bridge
 
 Bu çalışma alanı Arduino Mega2560 Pro Mini'den Jetson'a seri hat üzerinden

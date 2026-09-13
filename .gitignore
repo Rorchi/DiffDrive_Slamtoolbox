@@ -1,3 +1,7 @@
+# Amaç: Üretilen ve yerel dosyaların Git takibine alınmasını engeller.
+# Çalışma: Git, derleme çıktısı, önbellek ve diğer yerel dosya yollarını aşağıdaki
+# kalıplarla karşılaştırarak izlenmeyen dosyaları durum listesinden hariç tutar.
+
 # ============================================================
 # Kaşif Çelebi / ROS2 + Jetson + DepthAI + Arduino Project
 # ============================================================

@@ -1,0 +1,76 @@
+# Amaç: slam_toolbox haritalama ve tarama eşleştirme parametrelerini saklar.
+# Çalışma: SLAM düğümü /scan taramalarını ve odom TF bilgisini kullanır; çözünürlük,
+# ölçüm aralığı, eşleştirme ve döngü kapatma eşikleri bu dosyadan yüklenir.
+# Harita ve map ile odom arasındaki dönüşüm bu ayarlara göre güncellenir.
+
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false  # false: canlı Jetson saatini kullan; rosbag playback'te true yapılabilir.
+
+    # Pose graph optimizasyonunda kullanılan Ceres çözücü seçenekleri.
+    solver_plugin: solver_plugins::CeresSolver  # slam_toolbox pose graph çözücü eklentisi.
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY  # Seyrek normal denklem lineer çözücüsü.
+    ceres_preconditioner: SCHUR_JACOBI           # Lineer çözümü hızlandıran önkoşullayıcı.
+    ceres_trust_strategy: LEVENBERG_MARQUARDT    # Doğrusal olmayan optimizasyon güven stratejisi.
+    ceres_dogleg_type: TRADITIONAL_DOGLEG        # Dogleg seçilirse kullanılacak adım türü.
+    ceres_loss_function: None                    # Robust loss kapalı; tüm constraint'ler normal ağırlıkta.
+
+    odom_frame: odom        # EKF'nin sürekli yerel hareket referansı.
+    map_frame: map          # SLAM'in oluşturduğu global harita referansı.
+    base_frame: base_link   # Lidar pozunun bağlandığı robot gövde frame'i.
+    scan_topic: /scan       # RPLidar LaserScan topic'i.
+    mode: mapping           # Yeni pose graph ve occupancy haritası oluşturur.
+    use_map_saver: true     # slam_toolbox harita kaydetme servislerini etkinleştirir.
+
+    debug_logging: false            # Ayrıntılı debug loglarını kapalı tutar.
+    throttle_scans: 1               # Her lidar taramasını işler; 2 olursa iki taramada birini işler.
+    transform_publish_period: 0.05  # map->odom TF yayın periyodu [s], burada 20 Hz.
+    map_update_interval: 2.0        # Occupancy grid /map güncelleme aralığı [s].
+    resolution: 0.05                # Harita hücre boyutu [m/hücre].
+    min_laser_range: 0.20           # Bundan yakın lidar ölçümlerini yok sayar [m].
+    max_laser_range: 12.0           # Bundan uzak lidar ölçümlerini yok sayar [m].
+    minimum_time_interval: 0.1      # İşlenen iki scan arasında gerekli en az zaman [s].
+    transform_timeout: 0.2          # Scan zamanı için TF bulunurken azami bekleme [s].
+    tf_buffer_duration: 30.0        # Geçmiş TF verilerinin bellekte tutulma süresi [s].
+    stack_size_to_use: 40000000     # Serileştirme/çözüm işlemleri için ayrılan stack [bayt].
+    enable_interactive_mode: true   # RViz interactive marker ile graph düzenlemeyi açar.
+
+    # Ardışık lidar taramalarından yeni pose/constraint üretme ayarları.
+    use_scan_matching: true                  # Odometri tahminini lidar scan matching ile düzeltir.
+    use_scan_barycenter: true                # Scan eşleştirmede ışınların ağırlık merkezini kullanır.
+    minimum_travel_distance: 0.10            # Yeni scan düğümü için gereken en az ilerleme [m].
+    minimum_travel_heading: 0.10             # Yeni scan düğümü için gereken en az dönüş [rad].
+    scan_buffer_size: 10                     # Eşleştirme için saklanan yakın geçmiş scan sayısı.
+    scan_buffer_maximum_scan_distance: 10.0  # Buffer'daki scan'lerin robota azami uzaklığı [m].
+    link_match_minimum_response_fine: 0.10   # Ardışık scan bağlantısı için asgari ince eşleşme skoru.
+    link_scan_maximum_distance: 1.5          # Ardışık scan constraint'i için azami mesafe [m].
+
+    # Daha önce görülen bölgeye dönüldüğünde loop closure kabul koşulları.
+    do_loop_closing: true                    # Pose graph döngü kapatmayı etkinleştirir.
+    loop_search_maximum_distance: 3.0        # Loop adayı aranan azami yakınlık [m].
+    loop_match_minimum_chain_size: 10        # Loop adayı için gereken en az bağlı scan zinciri.
+    loop_match_maximum_variance_coarse: 3.0  # Kaba eşleşmede izin verilen en yüksek varyans.
+    loop_match_minimum_response_coarse: 0.35 # Kaba loop eşleşmesi asgari yanıt skoru.
+    loop_match_minimum_response_fine: 0.45   # İnce loop eşleşmesi asgari yanıt skoru.
+
+    # Normal scan matching korelasyon arama penceresi.
+    correlation_search_space_dimension: 0.5       # Arama alanının doğrusal boyutu [m].
+    correlation_search_space_resolution: 0.01     # Arama grid çözünürlüğü [m].
+    correlation_search_space_smear_deviation: 0.10  # Korelasyon hücresi yayma sapması [m].
+
+    # Loop closure için daha geniş korelasyon arama penceresi.
+    loop_search_space_dimension: 8.0       # Loop aramasının doğrusal alan boyutu [m].
+    loop_search_space_resolution: 0.05     # Loop arama grid çözünürlüğü [m].
+    loop_search_space_smear_deviation: 0.03  # Loop korelasyon hücresi yayma sapması [m].
+
+    # Scan matcher skor cezaları, açı arama adımları ve occupancy eşikleri.
+    distance_variance_penalty: 0.5  # Odometri tahmininden doğrusal sapmayı cezalandırır.
+    angle_variance_penalty: 1.0     # Odometri tahmininden açısal sapmayı cezalandırır.
+    fine_search_angle_offset: 0.00349  # İnce açı aramasının yarı aralığı [rad, yaklaşık 0.2°].
+    coarse_search_angle_offset: 0.349  # Kaba açı aramasının yarı aralığı [rad, yaklaşık 20°].
+    coarse_angle_resolution: 0.0349    # Kaba açı aramasının adımı [rad, yaklaşık 2°].
+    minimum_angle_penalty: 0.9      # Açısal cezanın düşebileceği en düşük çarpan.
+    minimum_distance_penalty: 0.5   # Mesafe cezasının düşebileceği en düşük çarpan.
+    use_response_expansion: true    # İlk eşleşme zayıfsa arama alanını genişletir.
+    min_pass_through: 2             # Hücreyi kullanmak için gereken asgari ışın geçişi.
+    occupancy_threshold: 0.1        # Hücrenin dolu kabul edilmesi için olasılık eşiği.

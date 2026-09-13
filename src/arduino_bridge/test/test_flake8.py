@@ -1,3 +1,7 @@
+# Amaç: arduino_bridge Python dosyalarının kod biçimini denetler.
+# Çalışma: pytest içinden ament_flake8 çalıştırılır; bulunan biçim hataları
+# testin başarısız olmasına neden olur.
+
 # Copyright 2017 Open Source Robotics Foundation, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

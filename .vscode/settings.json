@@ -1,3 +1,7 @@
+// Amaç: VS Code çalışma alanının ROS 2, Python ve CMake ayarlarını tanımlar.
+// Çalışma: Editör ROS 2 Humble seçimini, Python modül arama yollarını ve
+// robot_description CMake kaynak dizinini bu JSONC ayarlarından yükler.
+
 {
     "ROS2.distro": "humble",
     "python.autoComplete.extraPaths": [
@@ -12,5 +16,5 @@
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
-    "cmake.sourceDirectory": "/home/orin/kasif_celebi_ws/src/rplidar_ros2"
+    "cmake.sourceDirectory": "/home/orin/DiffDrive_Slamtoolbox/src/robot_description"
 }

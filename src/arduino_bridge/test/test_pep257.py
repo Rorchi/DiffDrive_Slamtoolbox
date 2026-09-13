@@ -1,3 +1,7 @@
+# Amaç: arduino_bridge Python açıklama dizelerinin biçimini denetler.
+# Çalışma: pytest içinden ament_pep257 çalıştırılarak paket ve test dizinindeki
+# docstring kuralları kontrol edilir; sıfır dönüş kodu beklenir.
+
 # Copyright 2015 Open Source Robotics Foundation, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

@@ -1,0 +1,7 @@
+image: map3.pgm              # Occupancy görüntüsü; bu YAML dosyasına göre göreli yol.
+mode: trinary                # Hücreleri dolu, boş veya bilinmeyen olarak sınıflandırır.
+resolution: 0.05             # Bir pikselin gerçek dünyadaki karşılığı [m/piksel].
+origin: [-3.68, -4.09, 0.0]  # Görüntünün map frame'indeki [x, y, yaw] başlangıcı.
+negate: 0                    # 0: siyah engel, beyaz boş alan olarak yorumlanır.
+occupied_thresh: 0.65        # Üzeri dolu/engel kabul edilen occupancy olasılığı.
+free_thresh: 0.25            # Altı boş/geçilebilir kabul edilen occupancy olasılığı.

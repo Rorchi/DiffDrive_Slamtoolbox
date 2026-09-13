@@ -1,3 +1,9 @@
+<!--
+Amaç: RPLidar’ın Jetson üzerindeki kurulumunu ve kullanımını belgeler.
+Çalışma: USB cihazı ve kalıcı port adını açıklayıp sistem geneli ROS 2 sürücüsü
+kurulumu ile lidarın çalıştırılmasına ilişkin adımları sunar.
+-->
+
 # RPLidar kurulumu ve kullanım notu
 
 ## Neler yaptık?

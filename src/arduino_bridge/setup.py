@@ -1,3 +1,7 @@
+# Amaç: Arduino köprüsünün Python ve ROS 2 kurulumunu tanımlar.
+# Çalışma: setuptools ile paket ve ament kayıt dosyalarını kurar; serial_bridge
+# komutunu arduino_bridge.serial_bridge:main giriş noktasına bağlar.
+
 from setuptools import setup
 
 package_name = 'arduino_bridge'

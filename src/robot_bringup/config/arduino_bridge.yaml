@@ -1,7 +1,24 @@
+# Amaç: Arduino seri köprüsünün bağlantı ve odometri ayarlarını saklar.
+# Çalışma: serial_bridge_node bu ROS 2 parametrelerini launch sırasında yükler;
+# port, baud hızı, tekerlek geometrisi, encoder çözünürlüğü, yön
+# katsayıları ve zaman aşımı sınırlarını burada belirtilen değerlerle kullanır.
+
 serial_bridge_node:
   ros__parameters:
-    port: /dev/arduino
-    baudrate: 115200
-    wheel_radius: 0.04
-    wheel_base: 0.36
-    encoder_ticks_per_rev: 7000
+    port: /dev/arduino             # Arduino için kalıcı udev seri port bağlantısı.
+    baudrate: 115200               # Arduino ile seri haberleşme hızı [bit/s].
+    wheel_radius: 0.04             # Tekerlek yarıçapı [m]; tick-metre dönüşümünde kullanılır.
+    wheel_base: 0.20               # Sağ ve sol tekerlek merkezleri arası etkin mesafe [m].
+    encoder_ticks_per_rev: 7000.0  # Bir tekerlek turuna karşılık gelen encoder tick sayısı.
+
+    # slam_rosbag2 ve fiziksel dönüş testi sonucunda ham IMU yönü doğru,
+    # encoder tabanlı yaw yönü ters bulundu. Bu kalibrasyon değerleri korunmalı.
+    imu_gyro_z_scale: 1.0          # IMU gyro-z ölçüm çarpanı; +1 ham yönü korur.
+    wheel_yaw_scale: -1.0          # Encoder yaw çarpanı; -1 hesaplanan dönüş yönünü çevirir.
+
+    odom_topic: /wheel/odometry_raw  # EKF'ye giden filtrelenmemiş wheel odometry topic'i.
+    publish_odom_tf: false           # false: odom->base_link TF'sini yalnız EKF yayımlar.
+    cmd_vel_timeout: 0.5             # Bu süre komut gelmezse Arduino'ya dur gönderilir [s].
+    max_encoder_delta: 100000         # Tek pakette kabul edilen en büyük mutlak tick değişimi.
+    max_serial_packets: 10            # Bir 20 ms timer turunda işlenecek azami paket sayısı.
+    max_device_dt_ms: 1000            # Arduino paketleri arasında kabul edilen azami süre [ms].

@@ -1,3 +1,7 @@
+# Amaç: Paketin telif hakkı bildirimlerini denetler.
+# Çalışma: pytest içinde ament_copyright denetleyicisini çağırır ve dönüş
+# kodunun sıfır olmasını bekler.
+
 # Copyright 2015 Open Source Robotics Foundation, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

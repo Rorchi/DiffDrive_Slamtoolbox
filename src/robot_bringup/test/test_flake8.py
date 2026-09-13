@@ -1,3 +1,7 @@
+# Amaç: robot_bringup Python dosyalarının kod biçimini denetler.
+# Çalışma: pytest içinden ament_flake8 çalıştırılır; bulunan biçim hataları
+# testin başarısız olmasına neden olur.
+
 from ament_flake8.main import main_with_errors
 
 

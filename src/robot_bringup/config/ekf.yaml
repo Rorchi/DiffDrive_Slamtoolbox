@@ -1,0 +1,45 @@
+# Amaç: Tekerlek odometrisi ile IMU’dan iki boyutlu durum kestirimini ayarlar.
+# Çalışma: robot_localization EKF düğümü /wheel/odometry_raw hızlarını ve
+# /imu/data_raw Z açısal hızını seçili bileşenlerle birleştirir;
+# 30 Hz filtre çıktısı üretir ve odom ile base_link arasındaki TF’yi yayımlar.
+
+ekf_filter_node:
+  ros__parameters:
+    frequency: 30.0              # EKF tahmin ve çıktı döngüsü hedef frekansı [Hz].
+    sensor_timeout: 0.2          # Sensör gelmezse yalnız tahmine geçmeden önce beklenecek süre [s].
+    two_d_mode: true             # Z, roll ve pitch'i sıfırlayıp hareketi X-Y-yaw düzlemine sınırlar.
+    publish_tf: true             # Filtrelenmiş odom->base_link TF dönüşümünü yayımlar.
+    publish_acceleration: false  # Filtrenin ivme çıktısını ayrı mesaj olarak yayımlamaz.
+    print_diagnostics: true      # Sensör zaman aşımı ve filtre durumunu /diagnostics'e gönderir.
+
+    map_frame: map              # Global, sıçrama yapabilen harita referans frame'i.
+    odom_frame: odom            # Sürekli fakat zamanla sürüklenebilen yerel referans frame'i.
+    base_link_frame: base_link  # Durumu kestirilen robot gövde frame'i.
+    world_frame: odom           # EKF çıktısının referansı; map->odom düzeltmesi SLAM'e bırakılır.
+
+    odom0: /wheel/odometry_raw  # Birinci odometri girdisi: seri köprüden gelen ham wheel odometry.
+    # Seçim sırası: [x, y, z, roll, pitch, yaw,
+    #                vx, vy, vz, vroll, vpitch, vyaw,
+    #                ax, ay, az].
+    # vx ve vyaw encoderden ölçülür. Diferansiyel robot yana hareket edemediği
+    # için vy=0 da füzyona alınır ve yanal covariance'ın büyümesi sınırlandırılır.
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false  # Girdi hız içerdiği için ardışık ölçüm farkına dönüştürülmez.
+    odom0_relative: false      # İlk ölçüm başlangıç kabul edilmez; mesaj doğrudan kullanılır.
+    odom0_queue_size: 10       # Yoğun işlem anında tutulabilecek odometri mesajı sayısı.
+
+    imu0: /imu/data_raw       # Birinci IMU girdisi: orientation içermeyen ham IMU mesajı.
+    # Aynı 15 elemanlı sırada yalnız vyaw (gyro-z açısal hızı) etkinleştirilir.
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu0_differential: false  # Gyro-z zaten hız ölçümü olduğu için farkı alınmaz.
+    imu0_relative: false      # Mutlak orientation füzyona girmediğinden göreli moda gerek yoktur.
+    imu0_queue_size: 20       # İşlem gecikmelerinde tutulabilecek IMU mesajı sayısı.
+    imu0_remove_gravitational_acceleration: false  # İvme füzyonda değil; yerçekimi çıkarılmaz.

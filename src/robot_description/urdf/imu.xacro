@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+Amaç: IMU koordinat sistemini ve Gazebo IMU sensörünü tanımlar.
+Çalışma: imu_link bağlantısını chassis üzerine sabit eklemle yerleştirir;
+Gazebo sensör tanımı imu konusuna 100 Hz ölçüm üretimini yapılandırır.
+-->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <joint name="imu_joint" type="fixed">
+    <parent link="chassis"/>
+    <child link="imu_link"/>
+    <origin xyz="-0.07 0 0.01" rpy="0 0 0"/>
+  </joint>
+
+  <link name="imu_link"></link> 
+
+  <gazebo reference="imu_link">
+  <sensor name="imu_sensor" type="imu">
+    <always_on>true</always_on>
+    <update_rate>100</update_rate>
+    <topic>imu</topic>
+    <visualize>true</visualize>
+  </sensor>
+</gazebo>
+
+</robot>

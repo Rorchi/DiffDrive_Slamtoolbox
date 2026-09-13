@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!--
+Amaç: Kaşif Çelebi robotunun ana Xacro modelini bir araya getirir.
+Çalışma: Malzeme, şasi, lidar, IMU, kamera ve tekerlek tanımlarını dahil eder.
+Xacro işlendiğinde robot_state_publisher tarafından kullanılan URDF oluşur.
+-->
+
+<robot name="kasif_celebi" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:include filename="$(find robot_description)/urdf/materials.xacro"/>
+  <xacro:include filename="$(find robot_description)/urdf/chassis.xacro"/>
+  <xacro:include filename="$(find robot_description)/urdf/lidar.xacro"/>
+  <xacro:include filename="$(find robot_description)/urdf/imu.xacro"/>
+  <xacro:include filename="$(find robot_description)/urdf/rgb_camera.xacro"/>
+  <xacro:include filename="$(find robot_description)/urdf/wheel.xacro"/>
+
+</robot>

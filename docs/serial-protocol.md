@@ -1,3 +1,9 @@
+<!--
+Amaç: Arduino ile Jetson arasında kullanılan seri mesaj sözleşmesini açıklar.
+Çalışma: Bağlantı, JSON alanları, birimler ve komut biçimleri üzerinden firmware
+ile ROS 2 köprüsünün aynı veriyi nasıl yorumlaması gerektiğini tanımlar.
+-->
+
 # Arduino - Jetson seri protokolü
 
 ## Bağlantı
@@ -33,17 +39,38 @@ doğrudan işler:
 - `gx`, `gy`, `gz`: açısal hız, rad/s.
 - `enc_l`, `enc_r`: sol ve sağ encoder'ın kümülatif tick sayısı.
 
-Köprü `/imu/data`, `/odom` ve `/joint_states` yayınlar. Firmware yönelim
+İsteğe bağlı sağlık ve batarya alanları şunlardır: `imu_ok`, `battery_ok`,
+`low_battery`, `voltage`, `current`, `power`, `charge`, `capacity`,
+`percentage` ve `remaining_minutes`.
+
+Köprü `/imu/data_raw`, `/wheel/odometry_raw`, `/wheel/encoders`, `/battery`
+ve `/joint_states` yayınlar. Firmware yönelim
 (quaternion) göndermediği için `Imu.orientation` bilinmiyor olarak işaretlenir.
 Sabit halde ivme vektörünün büyüklüğü yaklaşık 9.81 m/s² olmalıdır; bu değer
 farklıysa IMU ölçeklendirmesi/kalibrasyonu firmware tarafında düzeltilmelidir.
 
+Varsayılan yapılandırmada köprü `odom -> base_link` TF'sini yayınlamaz.
+Bu dönüşümün tek sahibi `robot_localization` EKF düğümüdür. Köprü yalnızca
+EKF kullanılmayan bağımsız testlerde `publish_odom_tf: true` ile TF yayınlar.
+Son `/cmd_vel` mesajından sonra 0.5 saniye içinde yeni komut gelmezse köprü
+güvenlik amacıyla Arduino'ya dur (`S`) komutu gönderir.
+
+IMU gyro yönü `imu_gyro_z_scale`, encoder tabanlı yaw yönü ise
+`wheel_yaw_scale` ile kalibre edilir. Kaşif Çelebi'nin ölçülen yapılandırması
+IMU için `1.0`, wheel yaw için `-1.0` kullanır. Bu çarpanlar ham seri
+protokolünü değiştirmez ve teleop komut eşlemesine uygulanmaz.
+
+Araç firmware'indeki motor yönlerine göre pozitif `/cmd_vel.angular.z`
+Arduino'ya `D`, negatif değer ise `A` olarak gönderilir. Böylece standart
+`teleop_twist_keyboard` kullanımında `J` fiziksel sola, `L` fiziksel sağa
+döndürür.
+
 ## Sağlık kontrolleri
 
 ```bash
-ros2 topic echo /imu/data --once
-ros2 topic echo /odom --once
-ros2 topic hz /imu/data
+ros2 topic echo /imu/data_raw --once
+ros2 topic echo /wheel/odometry_raw --once
+ros2 topic hz /imu/data_raw
 ros2 run tf2_ros tf2_echo odom base_link
 ```
 

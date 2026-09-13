@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Amaç: Jetson’da Arduino USB seri bağlantısını ve kalıcı cihaz adlarını kurar.
+# Çalışma: sudo ile çalıştırıldığında orin kullanıcısını dialout grubuna ekler,
+# brltty servislerini maskeler, WCH ch341 sürücüsünü derleyip kurar ve
+# udev kurallarını yükler. USB cihazını yeniden bağlayıp sonucu listeler.
+
 # Jetson Orin: Arduino CH340 sürücüsü + udev isimleri + dialout.
 # Format sonrası: sudo ./scripts/usb_serial/install.sh
 set -euo pipefail

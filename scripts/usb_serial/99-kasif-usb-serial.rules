@@ -1,3 +1,8 @@
+# Amaç: Arduino ve RPLidar için kalıcı seri port adları ve erişim kuralları tanımlar.
+# Çalışma: udev USB üretici/ürün kimliklerini eşleştirerek /dev/arduino ve
+# /dev/rplidar bağlantılarını oluşturur, dialout grubuna erişim verir ve
+# ilgili cihazlar için ModemManager yok sayma değişkenlerini ayarlar.
+
 # Kaşif Çelebi — kalıcı USB-serial isimleri
 # ttyUSB0/1 sırası her takışta değişmesin diye vendor/product ile sabit symlink.
 #
