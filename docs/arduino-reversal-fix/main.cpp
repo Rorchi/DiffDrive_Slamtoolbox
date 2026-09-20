@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 #include <stddef.h>
+#include <avr/wdt.h>
 #include "wheel_protocol.h"
 
 // --- MOTOR VE ENCODER PINLERI ---
@@ -113,26 +114,51 @@ const uint8_t batteryStateSlotCount = 16;
 uint8_t batteryStateSlot = 0;
 uint32_t batteryStateSequence = 0;
 
-// --- KONTROL VE ZAMANLAMA ---
-const float ticksPerMeter = 7000.0f / (2.0f * PI * 0.04f);
+// --- TEKERLEK HIZ KONTROLU VE GUVENLIK ---
+const float wheelRadiusM = 0.04f;
+const float encoderTicksPerRevolution = 7000.0f;
+const float ticksPerMeter =
+    encoderTicksPerRevolution / (2.0f * PI * wheelRadiusM);
+const float velocityIntegralGain = 0.8f;
+const unsigned long controlIntervalMs = 20UL;      // 50 Hz
+const unsigned long telemetryIntervalMs = 100UL;  // 10 Hz
+const unsigned long commandTimeoutMs = 500UL;
+const unsigned long reverseCoastMs = 200UL;
+const unsigned long stallConfirmationMs = 600UL;
+const int stallPwmThreshold = 180;
+const float stallTargetThresholdMps = 0.01f;
+const float stoppedTicksPerSecond = 60.0f;
+const float maximumControlDtS = 0.15f;
+
+struct WheelControlState {
+  int pwm = 0;
+  int direction = 1;
+  unsigned long reverseStartedMs = 0;
+  unsigned long stallStartedMs = 0;
+  uint8_t stoppedSamples = 0;
+};
+
 WheelProtocol wheelProtocol;
-float targetSpeedA = 0;
-float targetSpeedB = 0;
-const float Kp = 0.8f;
-int currentPWMA = 0;
-int currentPWMB = 0;
+WheelControlState wheelAState;
+WheelControlState wheelBState;
+float targetSpeedA = 0.0f;
+float targetSpeedB = 0.0f;
+float measuredSpeedA = 0.0f;
+float measuredSpeedB = 0.0f;
+bool motorFault = false;
 long lastE1 = 0;
 long lastE2 = 0;
 
 unsigned long lastControlTime = 0;
-const int controlInterval = 100;
+unsigned long lastTelemetryTime = 0;
 unsigned long lastCommandTime = 0;
-const int watchDogTimeout = 500;
 
 void stopMotors();
-void controlWheel(float target, float measuredTicksPerSecond, float dt,
-                  int &pwm, int &direction, int pwmPin, int in1, int in2,
-                  bool forwardHigh);
+bool controlWheel(float targetMps, float measuredTicksPerSecond, float dt,
+                  WheelControlState &state, int pwmPin, int in1, int in2,
+                  bool forwardHigh, unsigned long nowMs);
+void runWheelControl(unsigned long nowMs);
+void publishTelemetry(unsigned long nowMs);
 void encoder1ISR();
 void encoder2ISR();
 int readI2cRegister(uint8_t address, uint8_t reg);
@@ -150,6 +176,8 @@ bool restoreBatteryState(float &restoredRemainingAh);
 uint16_t batteryStateChecksum(const StoredBatteryState &state);
 
 void setup() {
+  MCUSR &= ~_BV(WDRF);
+  wdt_disable();
   Serial.begin(115200);
   Wire.begin();
   Wire.setClock(100000);
@@ -164,7 +192,9 @@ void setup() {
   pinMode(redLedPin, OUTPUT);
   pinMode(yellowLedPin, OUTPUT);
   pinMode(greenLedPin, OUTPUT);
-  digitalWrite(STBY, HIGH);
+  digitalWrite(STBY, LOW);
+  analogWrite(PWMA, 0);
+  analogWrite(PWMB, 0);
   digitalWrite(buzzerPin, buzzerInactiveLevel);
   digitalWrite(redLedPin, LOW);
   digitalWrite(yellowLedPin, LOW);
@@ -230,6 +260,11 @@ void setup() {
   lastBatteryTime = millis();
   lastBatterySaveMs = lastBatteryTime;
   updateBatteryIndicators(lastBatteryTime);
+  stopMotors();
+  digitalWrite(STBY, HIGH);
+  lastControlTime = millis();
+  lastTelemetryTime = lastControlTime;
+  lastCommandTime = lastControlTime;
 
   Serial.print("{\"status\":\"baslatildi\",\"imu_ok\":");
   Serial.print(mpuAvailable ? "true" : "false");
@@ -247,57 +282,53 @@ void setup() {
   }
   Serial.print(",\"battery_ok\":");
   Serial.print(ina219Available ? "true" : "false");
+  Serial.print(",\"command_protocol\":\"wheel_v1\"");
+  Serial.print(",\"max_wheel_mm_s\":");
+  Serial.print(WheelProtocol::kMaxSpeedMmS);
   Serial.println("}");
+  wdt_enable(WDTO_1S);
 }
 
 void loop() {
-  // Bound parser work so a stream of bytes cannot starve motor control.
-  for (uint8_t n = 0; n < 64 && Serial.available() > 0; ++n) {
-    int left = 0, right = 0;
-    const int result = wheelProtocol.feed(Serial.read(), left, right);
+  wdt_reset();
+
+  // Seri veri seli motor kontrolunu bloke etmesin.
+  for (uint8_t count = 0; count < 64 && Serial.available() > 0; ++count) {
+    int leftMmS = 0;
+    int rightMmS = 0;
+    const int result =
+        wheelProtocol.feed(static_cast<char>(Serial.read()), leftMmS, rightMmS);
     if (result == 1) {
-      targetSpeedA = left * 0.001f;
-      targetSpeedB = right * 0.001f;
       lastCommandTime = millis();
-      if (left == 0 && right == 0) stopMotors();
+      if (leftMmS == 0 && rightMmS == 0) {
+        motorFault = false;
+        stopMotors();
+      } else if (!motorFault) {
+        targetSpeedA = leftMmS * 0.001f;
+        targetSpeedB = rightMmS * 0.001f;
+      } else {
+        stopMotors();
+      }
     } else if (result < 0) {
       stopMotors();
     }
   }
 
-  if (millis() - lastCommandTime > watchDogTimeout) {
-    stopMotors();
-  }
-
-  if (millis() - lastControlTime < controlInterval) {
-    return;
-  }
-
   const unsigned long nowMs = millis();
-  const float controlDt = (nowMs - lastControlTime) * 0.001f;
-  lastControlTime = nowMs;
+  if (nowMs - lastCommandTime > commandTimeoutMs) stopMotors();
 
-  noInterrupts();
-  const long e1 = encoder1Count;
-  const long e2 = encoder2Count;
-  interrupts();
+  if (nowMs - lastControlTime >= controlIntervalMs) {
+    runWheelControl(nowMs);
+  }
 
-  const long encLeftForOdom = encoderLeftSign * e1;
-  const long encRightForOdom = encoderRightSign * e2;
-  const float currentSpeedA = fabs((float)(e1 - lastE1)) / controlDt;
-  const float currentSpeedB = fabs((float)(e2 - lastE2)) / controlDt;
-  lastE1 = e1;
-  lastE2 = e2;
+  updateBatteryIndicators(nowMs);
+  if (nowMs - lastTelemetryTime >= telemetryIntervalMs) {
+    lastTelemetryTime = nowMs;
+    publishTelemetry(nowMs);
+  }
+}
 
-  static int directionA = 1;
-  static int directionB = 1;
-  // Long stalls invalidate the feedback interval: stop until a fresh command.
-  if (controlDt > 0.25f) stopMotors();
-  controlWheel(targetSpeedA, currentSpeedA, controlDt, currentPWMA,
-               directionA, PWMA, AIN1, AIN2, true);
-  controlWheel(targetSpeedB, currentSpeedB, controlDt, currentPWMB,
-               directionB, PWMB, BIN1, BIN2, false);
-
+void publishTelemetry(unsigned long nowMs) {
   float ax = 0.0f, ay = 0.0f, az = 0.0f;
   float gx = 0.0f, gy = 0.0f, gz = 0.0f;
   if (mpuAvailable) {
@@ -316,7 +347,13 @@ void loop() {
   if (ina219Available) {
     readBattery(nowMs);
   }
-  updateBatteryIndicators(nowMs);
+
+  noInterrupts();
+  const long e1 = encoder1Count;
+  const long e2 = encoder2Count;
+  interrupts();
+  const long encLeftForOdom = encoderLeftSign * e1;
+  const long encRightForOdom = encoderRightSign * e2;
 
   Serial.print("{\"t_ms\":"); Serial.print(nowMs);
   Serial.print(",\"imu_ok\":"); Serial.print(mpuAvailable ? "true" : "false");
@@ -328,6 +365,13 @@ void loop() {
   Serial.print(",\"gz\":"); Serial.print(gz, 6);
   Serial.print(",\"enc_l\":"); Serial.print(encLeftForOdom);
   Serial.print(",\"enc_r\":"); Serial.print(encRightForOdom);
+  Serial.print(",\"target_left_mps\":"); Serial.print(targetSpeedA, 4);
+  Serial.print(",\"target_right_mps\":"); Serial.print(targetSpeedB, 4);
+  Serial.print(",\"speed_left_mps\":"); Serial.print(measuredSpeedA, 4);
+  Serial.print(",\"speed_right_mps\":"); Serial.print(measuredSpeedB, 4);
+  Serial.print(",\"pwm_left\":"); Serial.print(wheelAState.pwm);
+  Serial.print(",\"pwm_right\":"); Serial.print(wheelBState.pwm);
+  Serial.print(",\"motor_fault\":"); Serial.print(motorFault ? "true" : "false");
   Serial.print(",\"battery_ok\":"); Serial.print(ina219Available ? "true" : "false");
   Serial.print(",\"voltage\":"); Serial.print(batteryVoltageV, 3);
   Serial.print(",\"current\":"); Serial.print(batteryCurrentA, 3);
@@ -706,34 +750,137 @@ void encoder2ISR() {
   else encoder2Count--;
 }
 
-// A is left; B is right. Forward pin polarity follows the original W command.
 void stopMotors() {
-  targetSpeedA = targetSpeedB = 0;
-  currentPWMA = currentPWMB = 0;
+  targetSpeedA = 0.0f;
+  targetSpeedB = 0.0f;
+  wheelAState.pwm = 0;
+  wheelBState.pwm = 0;
+  wheelAState.reverseStartedMs = 0;
+  wheelBState.reverseStartedMs = 0;
+  wheelAState.stallStartedMs = 0;
+  wheelBState.stallStartedMs = 0;
+  wheelAState.stoppedSamples = 0;
+  wheelBState.stoppedSamples = 0;
   analogWrite(PWMA, 0);
   analogWrite(PWMB, 0);
   digitalWrite(AIN1, LOW); digitalWrite(AIN2, LOW);
   digitalWrite(BIN1, LOW); digitalWrite(BIN2, LOW);
 }
 
-void controlWheel(float target, float measuredTicksPerSecond, float dt,
-                  int &pwm, int &direction, int pwmPin, int in1, int in2,
-                  bool forwardHigh) {
-  const int requestedDirection = target >= 0 ? 1 : -1;
-  if (target == 0 || requestedDirection != direction) {
-    pwm = 0;
+bool controlWheel(float targetMps, float measuredTicksPerSecond, float dt,
+                  WheelControlState &state, int pwmPin, int in1, int in2,
+                  bool forwardHigh, unsigned long nowMs) {
+  if (targetMps == 0.0f) {
+    state.pwm = 0;
+    state.reverseStartedMs = 0;
+    state.stallStartedMs = 0;
+    state.stoppedSamples = 0;
     analogWrite(pwmPin, 0);
     digitalWrite(in1, LOW); digitalWrite(in2, LOW);
-    // Below approximately 1.8 mm/s, permit a change on the next cycle.
-    if (measuredTicksPerSecond < 50.0f) direction = requestedDirection;
-    return;
+    return false;
   }
-  const bool high = (direction > 0) == forwardHigh;
+
+  const int requestedDirection = targetMps > 0.0f ? 1 : -1;
+  if (requestedDirection != state.direction) {
+    state.pwm = 0;
+    state.stallStartedMs = 0;
+    analogWrite(pwmPin, 0);
+    digitalWrite(in1, LOW); digitalWrite(in2, LOW);
+    if (state.reverseStartedMs == 0) state.reverseStartedMs = nowMs;
+    if (measuredTicksPerSecond <= stoppedTicksPerSecond) {
+      if (state.stoppedSamples < 255) ++state.stoppedSamples;
+    } else {
+      state.stoppedSamples = 0;
+    }
+    if (nowMs - state.reverseStartedMs >= reverseCoastMs &&
+        state.stoppedSamples >= 2) {
+      state.direction = requestedDirection;
+      state.reverseStartedMs = 0;
+      state.stoppedSamples = 0;
+    }
+    return false;
+  }
+
+  state.reverseStartedMs = 0;
+  state.stoppedSamples = 0;
+  const bool high = (state.direction > 0) == forwardHigh;
   digitalWrite(in1, high ? HIGH : LOW);
   digitalWrite(in2, high ? LOW : HIGH);
-  // Retain the original incremental regulator; normalize feedback by real dt.
-  // Gain remains a bench-test starting point, not a tuned navigation setting.
-  const float error = fabs(target) * ticksPerMeter - measuredTicksPerSecond;
-  pwm = constrain(pwm + (int)(error * dt * Kp), 0, 255);
-  analogWrite(pwmPin, pwm);
+
+  const float targetTicksPerSecond = fabs(targetMps) * ticksPerMeter;
+  const float error = targetTicksPerSecond - measuredTicksPerSecond;
+  state.pwm = constrain(
+      state.pwm + static_cast<int>(error * dt * velocityIntegralGain),
+      0, 255);
+  analogWrite(pwmPin, state.pwm);
+
+  const bool possibleStall =
+      fabs(targetMps) >= stallTargetThresholdMps &&
+      state.pwm >= stallPwmThreshold &&
+      measuredTicksPerSecond <= stoppedTicksPerSecond;
+  if (possibleStall) {
+    if (state.stallStartedMs == 0) state.stallStartedMs = nowMs;
+    if (nowMs - state.stallStartedMs >= stallConfirmationMs) {
+      state.pwm = 0;
+      analogWrite(pwmPin, 0);
+      digitalWrite(in1, LOW); digitalWrite(in2, LOW);
+      return true;
+    }
+  } else {
+    state.stallStartedMs = 0;
+  }
+  return false;
+}
+
+void runWheelControl(unsigned long nowMs) {
+  const float dt = (nowMs - lastControlTime) * 0.001f;
+  lastControlTime = nowMs;
+
+  noInterrupts();
+  const long e1 = encoder1Count;
+  const long e2 = encoder2Count;
+  interrupts();
+  const long deltaE1 = e1 - lastE1;
+  const long deltaE2 = e2 - lastE2;
+  lastE1 = e1;
+  lastE2 = e2;
+
+  if (dt <= 0.0f || dt > maximumControlDtS) {
+    measuredSpeedA = 0.0f;
+    measuredSpeedB = 0.0f;
+    stopMotors();
+    return;
+  }
+
+  const float speedTicksA = fabs(static_cast<float>(deltaE1)) / dt;
+  const float speedTicksB = fabs(static_cast<float>(deltaE2)) / dt;
+  measuredSpeedA =
+      (encoderLeftSign * static_cast<float>(deltaE1)) / (dt * ticksPerMeter);
+  measuredSpeedB =
+      (encoderRightSign * static_cast<float>(deltaE2)) / (dt * ticksPerMeter);
+
+  // A direction change is a coordinated stop: do not let the other wheel
+  // accelerate while one channel is still inside its reversal coast period.
+  const bool reversingA = targetSpeedA != 0.0f &&
+      (targetSpeedA > 0.0f ? 1 : -1) != wheelAState.direction;
+  const bool reversingB = targetSpeedB != 0.0f &&
+      (targetSpeedB > 0.0f ? 1 : -1) != wheelBState.direction;
+  if (reversingA || reversingB) {
+    controlWheel(reversingA ? targetSpeedA : 0.0f, speedTicksA, dt,
+                 wheelAState, PWMA, AIN1, AIN2, true, nowMs);
+    controlWheel(reversingB ? targetSpeedB : 0.0f, speedTicksB, dt,
+                 wheelBState, PWMB, BIN1, BIN2, false, nowMs);
+    return;
+  }
+
+  const bool faultA =
+      controlWheel(targetSpeedA, speedTicksA, dt, wheelAState,
+                   PWMA, AIN1, AIN2, true, nowMs);
+  const bool faultB =
+      controlWheel(targetSpeedB, speedTicksB, dt, wheelBState,
+                   PWMB, BIN1, BIN2, false, nowMs);
+  if (faultA || faultB) {
+    motorFault = true;
+    stopMotors();
+  }
 }

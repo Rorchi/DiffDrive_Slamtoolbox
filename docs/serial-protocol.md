@@ -6,19 +6,26 @@ ile ROS 2 köprüsünün aynı veriyi nasıl yorumlaması gerektiğini tanımlar
 
 # Arduino - Jetson seri protokolü
 
-## Hazırlanan V1 hız arayüzü (henüz devreye alınmadı)
+## Fiziksel testle doğrulanan V1 hız arayüzü
 
-`arduino/mega2560` altındaki yeni firmware, `V1 <sol_mm_s> <sag_mm_s>\n`
-paketini kabul eder. Motor A sol, B sağ; pozitif hız ileri anlamındadır.
-Örneğin `V1 -30 30\n` sola yerinde dönüş, `V1 70 130\n` ileri-sola
-harekettir. Her tekerlek ±150 mm/s ile sınırlıdır. `S` durdurur; geçerli
-paket 500 ms gelmezse firmware PWM'yi sıfırlar. Parser LF kullanır.
+Robot üzerindeki firmware'in paket sırası `V1 <sag_mm_s> <sol_mm_s>\n`.
+Kullanıcının tekerlekler havadayken yaptığı testte `V1 40 0` sağ,
+`V1 0 40` sol tekerleği ileri döndürdü. Pozitif iki alan da ileri anlamındadır.
+Bu gözlem, önceki sol/sağ paket sırası varsayımının yerini alır; motor A/B
+etiketlerini veya encoder kanal sırasını tek başına doğrulamaz.
 
-ROS köprüsünde `command_protocol=wheel_v1` bu biçimi etkinleştirir.
-Varsayılan `legacy` aşağıda belgelenen W/X/A/D/S arayüzünü korur. Yeni
-firmware yüklenmeden mod değiştirilmemeli; iki uç birlikte geçiş yapmalıdır.
-Firmware derlemesi ve tekerlekler havadayken yön/hız doğrulaması tamamlanmadı.
-Encoder/IMU JSON telemetrisi ve odometri işaret kalibrasyonu değiştirilmedi.
+Pozitif ROS angular.z için `V1 30 -30\n` (sağ ileri, sol geri),
+ileri-sola hareket için `V1 130 70\n` örnekleri kullanılır. Köprü her
+tekerleği ±150 mm/s ile sınırlar; doygunlukta iki hızı orantılı küçültür.
+`S` durdurma komutudur. Komut kesildikten sonra duruş kullanıcı tarafından
+bildirildi; kesin watchdog süresi ve fiziksel hız henüz ölçülmedi.
+
+Bringup YAML içinde `command_protocol: wheel_v1` seçildi. Düğümün parametre
+verilmediğindeki varsayılanı eski firmware için `legacy` olarak kalır.
+Aşağıdaki W/X/A/D açıklamaları yalnız legacy mod içindir.
+Firmware kullanıcı tarafından harici Arduino deposunda güncellendi;
+yüklü kaynak bu çalışma alanında yeniden incelenmedi. Encoder/IMU verisi
+ve odometri işaret kalibrasyonu bu düzeltmede değiştirilmedi.
 
 ## Bağlantı
 

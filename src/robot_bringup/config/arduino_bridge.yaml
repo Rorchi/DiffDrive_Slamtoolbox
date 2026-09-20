@@ -7,6 +7,7 @@ serial_bridge_node:
   ros__parameters:
     port: /dev/arduino             # Arduino için kalıcı udev seri port bağlantısı.
     baudrate: 115200               # Arduino ile seri haberleşme hızı [bit/s].
+    command_protocol: wheel_v1     # Fiziksel test: V1 sağ_mm_s sol_mm_s; + ileri.
     wheel_radius: 0.04             # Tekerlek yarıçapı [m]; tick-metre dönüşümünde kullanılır.
     wheel_base: 0.20               # Sağ ve sol tekerlek merkezleri arası etkin mesafe [m].
     encoder_ticks_per_rev: 7000.0  # Bir tekerlek turuna karşılık gelen encoder tick sayısı.

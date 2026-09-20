@@ -4,7 +4,7 @@ import math
 
 
 def wheel_command(linear, angular, wheel_base, limit=0.15):
-    """Return signed left/right mm/s, scaling both wheels at saturation."""
+    """Return measured wire order: right/left mm/s, with shared scaling."""
     if not all(math.isfinite(x) for x in (linear, angular, wheel_base, limit)):
         return 'S'
     if wheel_base <= 0 or limit <= 0:
@@ -21,4 +21,5 @@ def wheel_command(linear, angular, wheel_base, limit=0.15):
     right_mm = round(right * 1000)
     if left_mm == 0 and right_mm == 0:
         return 'S'
-    return f'V1 {left_mm} {right_mm}\n'
+    # Physical tests: field 1 drives right, field 2 drives left; + is forward.
+    return f'V1 {right_mm} {left_mm}\n'

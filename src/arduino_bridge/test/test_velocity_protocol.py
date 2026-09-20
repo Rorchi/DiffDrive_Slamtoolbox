@@ -9,13 +9,18 @@ def test_forward_and_reverse():
 
 
 def test_turns_match_physical_motor_mapping():
-    assert wheel_command(0, 0.3, 0.20) == 'V1 -30 30\n'
-    assert wheel_command(0, -0.3, 0.20) == 'V1 30 -30\n'
+    assert wheel_command(0, 0.3, 0.20) == 'V1 30 -30\n'
+    assert wheel_command(0, -0.3, 0.20) == 'V1 -30 30\n'
 
 
 def test_curved_motion_and_proportional_saturation():
-    assert wheel_command(0.10, 0.3, 0.20) == 'V1 70 130\n'
-    assert wheel_command(0.20, 1.0, 0.20) == 'V1 50 150\n'
+    assert wheel_command(0.10, 0.3, 0.20) == 'V1 130 70\n'
+    assert wheel_command(0.20, 1.0, 0.20) == 'V1 150 50\n'
+
+
+def test_individual_wheels_match_observed_hardware():
+    assert wheel_command(0.02, 0.2, 0.20) == 'V1 40 0\n'
+    assert wheel_command(0.02, -0.2, 0.20) == 'V1 0 40\n'
 
 
 def test_stop_and_invalid_commands():
