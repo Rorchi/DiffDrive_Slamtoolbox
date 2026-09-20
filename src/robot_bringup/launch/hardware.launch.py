@@ -1,7 +1,10 @@
-# Amaç: Arduino köprüsünü ve RPLidar A1 sürücüsünü başlatır.
-# Çalışma: Arduino parametrelerini arduino_bridge.yaml dosyasından yükler. Sistem
-# rplidar_ros paketinin A1 launch dosyasını /dev/rplidar portu ve
-# laser_frame koordinat sistemiyle başlatma tanımına ekler.
+# Amaç: Arduino seri köprüsünü ve RPLidar A1 sürücüsünü çalıştırarak robotun
+# sensör verilerini ve hareket komutu bağlantısını ROS 2'ye açar.
+# Çalışma: serial_bridge düğümü arduino_bridge.yaml ayarlarını yükler; Arduino
+# verilerini ROS topic'lerine, /cmd_vel komutlarını seri protokole dönüştürür.
+# RPLidar sürücüsü /dev/rplidar portunu 115200 baud ile açar; laser_frame
+# referansında /scan verisi üretir. Model, EKF ve haritalama bu dosyada başlamaz.
+# Kullanım: ros2 launch robot_bringup hardware.launch.py
 
 """Start the Arduino bridge and RPLidar A1 driver for the robot."""
 

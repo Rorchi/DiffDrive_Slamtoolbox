@@ -1,7 +1,10 @@
-# Amaç: Donanımı, robot modelini, EKF filtresini ve RViz’i başlatır.
-# Çalışma: Xacro modelini robot_state_publisher ile TF ağacına dönüştürür; Arduino
-# ve lidar düğümlerini, ekf.yaml ile durum kestirimini ve robot_model.rviz
-# ayarlarıyla görselleştirmeyi aynı launch tanımında birleştirir.
+# Amaç: Donanım, robot modeli ve yerel odometriyi RViz'de birlikte incelemek.
+# Çalışma: Arduino köprüsü ve RPLidar başlatılır. Ana Xacro dosyası URDF'ye
+# dönüştürülür; robot_state_publisher gövde, sensör ve tekerlek TF'lerini üretir.
+# EKF, ekf.yaml ile encoder/IMU hızlarını birleştirerek /odometry/filtered ve
+# odom -> base_link TF'sini yayımlar. RViz robot_model.rviz ile açılır.
+# Harita ve map -> odom dönüşümü üreten bir lokalizasyon düğümü başlatılmaz.
+# Kullanım: ros2 launch robot_bringup hardwareRobotmodel.launch.py
 
 """Start the robot hardware, state publisher, and RViz."""
 

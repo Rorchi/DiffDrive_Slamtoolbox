@@ -436,21 +436,16 @@ encoder çözünürlüğü ve seri protokolüyle birlikte sürüm kontrolüne ek
 
 ## Ayrıntılı belgeler
 
+- [Navigasyon hazırlıkları, testler ve hız–akım raporu](docs/navigation-preparation-report.md)
 - [Robot bringup ve çalışma modları](docs/robot_bringup.md)
 - [Arduino–Jetson seri protokolü](docs/serial-protocol.md)
 - [RPLidar kurulum notları](docs/rplidar.md)
 - [SLAM hazırlık ve hata giderme raporu](docs/slam-mapping-calibration-report.md)
 - [LibreOffice Writer teknik raporu](docs/slam-mapping-calibration-report-writer.odt)
 
-## Sonraki aşama
+## İlk navigasyon profili
 
-AMCL lokalizasyonu fiziksel sürüş ve rosbag ile doğrulandıktan sonra Nav2 için
-şu bileşenler eklenecektir:
-
-1. Robot footprint ve inflation ayarları
-2. Global ve local costmap
-3. Global planner
-4. Yerel controller
-5. Velocity smoother ve güvenlik sınırları
-6. Behavior tree ve recovery davranışları
-7. RViz `Nav2 Goal` uçtan uca testi
+Smac 2D + RPP, hız yumuşatıcı, Collision Monitor ve sınırlı bekleme BT
+yapılandırması eklendi. [Kurulum ve ilk çalıştırma](docs/navigation-start.md).
+Hedef takibi fiziksel olarak henüz doğrulanmadı; lidar eğimi ve AMCL kayması
+açık konulardır.

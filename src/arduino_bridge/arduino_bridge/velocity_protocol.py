@@ -3,7 +3,7 @@
 import math
 
 
-def wheel_command(linear, angular, wheel_base, limit=0.15):
+def wheel_command(linear, angular, wheel_base, limit=0.10):
     """Return measured wire order: right/left mm/s, with shared scaling."""
     if not all(math.isfinite(x) for x in (linear, angular, wheel_base, limit)):
         return 'S'

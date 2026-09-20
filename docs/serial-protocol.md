@@ -15,8 +15,8 @@ Bu gözlem, önceki sol/sağ paket sırası varsayımının yerini alır; motor 
 etiketlerini veya encoder kanal sırasını tek başına doğrulamaz.
 
 Pozitif ROS angular.z için `V1 30 -30\n` (sağ ileri, sol geri),
-ileri-sola hareket için `V1 130 70\n` örnekleri kullanılır. Köprü her
-tekerleği ±150 mm/s ile sınırlar; doygunlukta iki hızı orantılı küçültür.
+ileri-sola hareket için `V1 80 40\n` örnekleri kullanılır. Köprü her
+tekerleği ±100 mm/s ile sınırlar; doygunlukta iki hızı orantılı küçültür.
 `S` durdurma komutudur. Komut kesildikten sonra duruş kullanıcı tarafından
 bildirildi; kesin watchdog süresi ve fiziksel hız henüz ölçülmedi.
 
@@ -97,3 +97,8 @@ ros2 run tf2_ros tf2_echo odom base_link
 
 Firmware kaynak kodu bu depoda henüz bulunmadığından `arduino/mega2560/`
 altına, kullanılan `.ino` dosyası ve pin bağlantı şeması eklenmelidir.
+
+Güncel ROS tekerlek hız sınırı 0.10 m/s (100 mm/s). İki tekerlek aynı
+oranda ölçeklenir; seri paketteki 1 mm/s yuvarlama dışında dönüş oranı korunur.
+Bu sınır wheel_v1 köprü moduna aittir; doğrudan seri komutları veya firmware
+parser sınırını değiştirmez.

@@ -1,7 +1,11 @@
-# Amaç: Gerçek robotta çevrim içi SLAM haritalamasını başlatır.
-# Çalışma: Donanım launch dosyasını dahil eder; Xacro modelini yayımlar, EKF ile
-# odometri üretir ve slam_toolbox çevrim içi asenkron launch dosyasını
-# slam_toolbox.yaml ile çalıştırır. RViz’i mapping.rviz ile açar.
+# Amaç: Gerçek robot hareket ettirilirken lidar verisinden yeni harita oluşturmak.
+# Çalışma: hardware.launch.py ile Arduino ve lidar açılır; Xacro modeli
+# robot_state_publisher tarafından yayımlanır. EKF odom -> base_link TF'sini
+# üretir. slam_toolbox, slam_toolbox.yaml ile asenkron haritalama yaparak /map
+# ve map -> odom TF'sini üretir. RViz mapping.rviz görünümüyle açılır.
+# Harita kaydı ayrıca map_saver ile yapılır; bu launch hareket komutu üretmez.
+# Kullanım: ros2 launch robot_bringup mapping.launch.py
+# Aynı anda AMCL lokalizasyonu çalıştırılmamalı; map -> odom yayıncıları çakışır.
 
 """Start hardware, state estimation, slam_toolbox, and mapping RViz."""
 

@@ -1,0 +1,15 @@
+<!-- Tek hedef: saniyede bir yeniden planla, takip et; hata halinde bekleyip
+     en fazla iki kez yeniden dene. Otomatik spin/back-up/clear yok. -->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="2" name="NavigateWithWait">
+      <PipelineSequence name="PlanAndFollow">
+        <RateController hz="1.0">
+          <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+        </RateController>
+        <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="goal_checker"/>
+      </PipelineSequence>
+      <Wait wait_duration="2.0"/>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

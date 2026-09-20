@@ -28,7 +28,7 @@ amcl:
     recovery_alpha_slow: 0.0          # Yavaş ortalama recovery katsayısı; 0 ile kapalı.
     recovery_alpha_fast: 0.0          # Hızlı ortalama recovery katsayısı; 0 ile kapalı.
 
-    update_min_d: 0.10                # Filtre güncellemesi için gereken en az ilerleme [m].
+    update_min_d: 0.03                # Düşük hızda daha sık scan düzeltmesi için ilerleme eşiği [m].
     update_min_a: 0.10                # Filtre güncellemesi için gereken en az dönüş [rad].
     save_pose_rate: 0.5               # Son pozu parametre sunucusuna kaydetme frekansı [Hz].
     always_reset_initial_pose: false  # Yeniden etkinleştirmede kayıtlı pozu zorla silmez.

@@ -1,3 +1,15 @@
+# Amaç: Gerçek robotun kayıtlı harita üzerindeki konumunu AMCL ile kestirmek.
+# Çalışma: hardware.launch.py, Xacro modeli ve EKF başlatılır. map_server,
+# map argümanındaki YAML haritasını (varsayılan map3.yaml) /map olarak sunar.
+# AMCL, amcl.yaml ayarlarıyla /scan ve odometri TF'sini kullanıp map -> odom
+# dönüşümünü üretir; odom -> base_link EKF'ye aittir. Lifecycle manager,
+# map_server ve AMCL'yi etkinleştirir. Başlangıç pozu /initialpose ile verilir.
+# Kullanım: ros2 launch robot_bringup localization.launch.py
+# Seçenekler: map:=/tam/yol/harita.yaml, use_sim_time:=false.
+# Mevcut kodda RViz düğümü tanımlı fakat LaunchDescription listesine ekli değil;
+# bu nedenle rviz argümanı tek başına pencere açmaz. RViz ayrıca çalıştırılır.
+# Mapping ile birlikte veya ikinci donanım kopyasıyla başlatılmamalıdır.
+
 """Start the real robot on a saved map with EKF and AMCL localization."""
 
 import os
