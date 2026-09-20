@@ -19,6 +19,8 @@ from sensor_msgs.msg import BatteryState, Imu, JointState
 from std_msgs.msg import Bool, Float32, Int64MultiArray
 from tf2_ros import TransformBroadcaster
 
+from arduino_bridge.velocity_protocol import wheel_command
+
 
 class SerialBridgeNode(Node):
     def __init__(self):
@@ -52,6 +54,11 @@ class SerialBridgeNode(Node):
         self.cmd_vel_timeout = float(
             self.declare_parameter('cmd_vel_timeout', 0.5).value
         )
+        self.command_protocol = str(
+            self.declare_parameter('command_protocol', 'legacy').value
+        )
+        if self.command_protocol not in ('legacy', 'wheel_v1'):
+            raise ValueError('command_protocol legacy veya wheel_v1 olmali')
         self.max_encoder_delta = int(
             self.declare_parameter('max_encoder_delta', 100000).value
         )
@@ -150,7 +157,15 @@ class SerialBridgeNode(Node):
             )
 
     def cmd_vel_callback(self, msg):
-        if msg.linear.x > 0.0:
+        if self.command_protocol == 'wheel_v1':
+            command = wheel_command(
+                msg.linear.x, msg.angular.z, self.wheel_base
+            )
+        elif not all(math.isfinite(x) for x in (
+            msg.linear.x, msg.angular.z
+        )):
+            command = 'S'
+        elif msg.linear.x > 0.0:
             command = 'W'
         elif msg.linear.x < 0.0:
             command = 'X'

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<!--
+Amaç: Kayıtlı harita üzerinde AMCL + EKF lokalizasyonunun kurulumunu,
+başlatılmasını ve canlı doğrulama sonuçlarını Writer uyumlu biçimde belgelemek.
+-->
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>Kaşif Çelebi Lokalizasyon Kurulum ve Doğrulama Raporu</title>
+  <style>
+    @page { size: A4; margin: 2.0cm 1.8cm 1.9cm 2.2cm; }
+    body { font-family: "Liberation Sans", Arial, sans-serif; font-size: 10.4pt; line-height: 1.38; color: #1d2833; }
+    h1 { color: #153a5b; font-size: 20pt; border-bottom: 2px solid #2b78a6; padding-bottom: 5px; margin-top: 22px; }
+    h2 { color: #1f5c82; font-size: 15pt; margin-top: 18px; }
+    h3 { color: #286f97; font-size: 12pt; margin-top: 14px; }
+    p { margin: 6px 0; text-align: justify; }
+    ul, ol { margin-top: 4px; margin-bottom: 8px; }
+    li { margin: 3px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0 15px 0; font-size: 9.2pt; }
+    th { background: #1f5c82; color: white; text-align: left; padding: 6px; border: 1px solid #adc2d1; }
+    td { padding: 6px; vertical-align: top; border: 1px solid #adc2d1; }
+    tr:nth-child(even) td { background: #eef5f8; }
+    pre { font-family: "Liberation Mono", monospace; font-size: 8.5pt; background: #f3f5f7; border-left: 4px solid #2b78a6; padding: 9px; white-space: pre-wrap; }
+    code { font-family: "Liberation Mono", monospace; font-size: 9pt; color: #7a2431; }
+    .cover { text-align: center; margin-top: 4.1cm; }
+    .cover h1 { border: 0; font-size: 26pt; text-align: center; }
+    .cover .subtitle { font-size: 16pt; color: #2b78a6; text-align: center; }
+    .cover .meta { margin-top: 3.8cm; text-align: center; color: #526675; }
+    .pagebreak { page-break-before: always; }
+    .note { background: #eaf4e2; border-left: 5px solid #5b8f3d; padding: 9px 12px; margin: 10px 0; }
+    .warning { background: #fff3db; border-left: 5px solid #d89019; padding: 9px 12px; margin: 10px 0; }
+    .critical { background: #fde9e7; border-left: 5px solid #b84035; padding: 9px 12px; margin: 10px 0; }
+    .small { font-size: 8.5pt; color: #526675; }
+    .toc a { color: #1f5c82; text-decoration: none; }
+    .ok { color: #28723d; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <h1>KAŞİF ÇELEBİ</h1>
+    <p class="subtitle">AMCL Lokalizasyon Kurulum, Kullanım ve Canlı Doğrulama Raporu</p>
+    <p><b>Platform:</b> Diferansiyel sürüşlü mobil robot<br>
+       <b>Yazılım:</b> ROS 2 Humble · Nav2 AMCL · robot_localization · RViz2<br>
+       <b>Algılayıcılar:</b> Tekerlek encoderleri · IMU · RPLidar A1</p>
+    <p class="meta">Belge tarihi: 20 Eylül 2026<br>
+       Belge sürümü: 1.0<br>
+       Proje: <code>/home/orin/DiffDrive_Slamtoolbox</code></p>
+  </div>
+
+  <div class="pagebreak"></div>
+  <h1>Belge bilgileri</h1>
+  <table>
+    <tr><th>Alan</th><th>Değer</th></tr>
+    <tr><td>Amaç</td><td>Kayıtlı <code>map3</code> haritasında AMCL lokalizasyonunun nasıl başlatıldığını, başlangıç pozu prosedürünü, doğru TF ağacını, RViz ayarlarını ve canlı sistemden ölçülen doğrulama sonuçlarını kayıt altına almak.</td></tr>
+    <tr><td>Sonuç</td><td><span class="ok">BAŞARILI:</span> Kullanıcı RViz üzerinden başlangıç pozu verdikten sonra <code>map</code> frame'i oluşmuş, harita ve robot modeli görüntülenmiş, AMCL pozu ile TF zinciri çalışmıştır.</td></tr>
+    <tr><td>Doğrulama yöntemi</td><td>Çalışan ROS 2 grafiğinde node, lifecycle, topic, QoS, mesaj hızı, AMCL pozu ve TF dönüşümleri 20.09.2026 tarihinde doğrudan ölçülmüştür.</td></tr>
+    <tr><td>Sonraki aşama</td><td>Mevcut lokalizasyon zincirini bozmadan Nav2 planner, controller, behavior ve costmap bileşenlerini devreye almak.</td></tr>
+  </table>
+
+  <h2>İçindekiler</h2>
+  <ol class="toc">
+    <li><a href="#ozet">Yönetici özeti</a></li>
+    <li><a href="#mimari">Mimari ve bileşen sorumlulukları</a></li>
+    <li><a href="#dosyalar">Kullanılan proje dosyaları</a></li>
+    <li><a href="#baslatma">Kurulum ve başlatma</a></li>
+    <li><a href="#initialpose">Başlangıç pozu verme</a></li>
+    <li><a href="#tf">Doğru TF ağacı ve canlı kontrol</a></li>
+    <li><a href="#topic">Topic ve QoS doğrulaması</a></li>
+    <li><a href="#rviz">RViz yapılandırması ve kullanım</a></li>
+    <li><a href="#uzak">Uzak bilgisayardan RViz</a></li>
+    <li><a href="#parametre">AMCL parametre özeti</a></li>
+    <li><a href="#sorun">Sorun giderme</a></li>
+    <li><a href="#kabul">Kabul kriterleri ve sonuç</a></li>
+    <li><a href="#komut">Komut özeti</a></li>
+  </ol>
+
+  <div class="pagebreak"></div>
+  <h1 id="ozet">1. Yönetici özeti</h1>
+  <p>Lokalizasyon sistemi, daha önce üretilen <code>map3.pgm</code>/<code>map3.yaml</code> haritası üzerinde Nav2 AMCL ile çalışmaktadır. Yerel ve sürekli hareket tahmini <code>robot_localization</code> EKF tarafından encoder ve IMU verileri birleştirilerek üretilir. AMCL, lidar taramasını kayıtlı haritayla eşleştirir ve global düzeltmeyi sağlar. Robot modeli ve sensör geometrisi <code>robot_state_publisher</code> tarafından Xacro tanımından yayınlanır.</p>
+  <p>İlk açılışta AMCL'nin robotun haritadaki yaklaşık yerini bilmemesi normaldir. RViz'deki <b>2D Pose Estimate</b> aracıyla başlangıç pozu verildiğinde AMCL parçacıkları doğru bölgeye yerleşir ve <code>map → odom</code> dönüşümü yayımlanır. Bu nedenle başlangıç pozu verilmeden önce RViz'de görülen <code>Frame [map] does not exist</code> veya bağlantılı dönüşüm hatası, diğer veriler sağlıklıysa tek başına arıza anlamına gelmez.</p>
+  <div class="note"><b>Canlı sonuç:</b> <code>map_server</code> ve <code>amcl</code> lifecycle durumları <b>active</b>; harita, AMCL pozu, robot açıklaması ve TF zinciri geçerlidir. Sensör hızları kararlı, TF sorumlulukları ayrılmıştır.</div>
+
+  <h1 id="mimari">2. Mimari ve bileşen sorumlulukları</h1>
+  <h2>2.1 Veri akışı</h2>
+  <pre>Arduino encoder ─► /wheel/odometry_raw ─┐
+                                        ├─► robot_localization EKF ─► /odometry/filtered
+Arduino IMU ─────► /imu/data_raw ───────┘                          └─► odom → base_link
+
+RPLidar A1 ──────► /scan ─┐
+                         ├─► AMCL ─► /amcl_pose, /particle_cloud, map → odom
+map_server ──────► /map ──┘
+
+Xacro/URDF ──────► robot_state_publisher ─► robot_description, robot gövde/sensör TF'leri</pre>
+
+  <h2>2.2 Tek TF yayıncısı kuralı</h2>
+  <table>
+    <tr><th>Dönüşüm</th><th>Sorumlu</th><th>Açıklama</th></tr>
+    <tr><td><code>map → odom</code></td><td>AMCL</td><td>Harita-lidar eşleşmesinden gelen global düzeltme. Lokalizasyon sırasında <code>slam_toolbox</code> çalıştırılmaz.</td></tr>
+    <tr><td><code>odom → base_link</code></td><td><code>robot_localization</code> EKF</td><td>Encoder ve IMU'dan sürekliliği yüksek yerel poz tahmini.</td></tr>
+    <tr><td>Robot gövdesi, sensörler ve tekerlekler</td><td><code>robot_state_publisher</code></td><td>Xacro sabit dönüşümleri ve <code>/joint_states</code> ile tekerlek eklemleri.</td></tr>
+  </table>
+  <div class="critical"><b>Çakışma yasağı:</b> Seri köprü veya ikinci bir EKF, <code>odom → base_link</code> yayınlamamalıdır. Lokalizasyonda <code>slam_toolbox</code> da çalıştırılmamalıdır; aksi durumda AMCL ile aynı <code>map → odom</code> dönüşümü için iki yayıncı oluşur.</div>
+
+  <h1 id="dosyalar">3. Kullanılan proje dosyaları</h1>
+  <table>
+    <tr><th>Dosya</th><th>Görev</th></tr>
+    <tr><td><code>src/robot_bringup/launch/localization.launch.py</code></td><td>Donanım, robot modeli, EKF, map server, AMCL ve lifecycle manager bileşenlerini birlikte tanımlar.</td></tr>
+    <tr><td><code>src/robot_bringup/config/amcl.yaml</code></td><td>AMCL frame, parçacık filtresi, diferansiyel hareket ve lidar ölçüm modeli ayarları.</td></tr>
+    <tr><td><code>src/robot_bringup/config/ekf.yaml</code></td><td>Wheel odometry + gyro-z füzyonu; <code>odom → base_link</code> üretimi.</td></tr>
+    <tr><td><code>src/robot_bringup/maps/map3.yaml</code></td><td>Harita çözünürlüğü, origin, eşikler ve PGM yolu.</td></tr>
+    <tr><td><code>src/robot_bringup/maps/map3.pgm</code></td><td>171 × 331 piksel occupancy görüntüsü; 0,05 m/piksel.</td></tr>
+    <tr><td><code>src/robot_bringup/config/navigation.rviz</code></td><td>Lokalizasyon ve sonraki Nav2 aşaması için kapsamlı RViz görünümü.</td></tr>
+    <tr><td><code>/home/orin/navigation.rviz</code></td><td>Jetson Orin üzerinde kısa komutla açmak için kopyalanan RViz yapılandırması.</td></tr>
+  </table>
+  <p>Canlı harita metadata'sı: çözünürlük <b>0,05 m</b>, boyut <b>171 × 331</b> hücre, yaklaşık fiziksel alan <b>8,55 × 16,55 m</b>, origin <b>[-3,68, -4,09, 0]</b>.</p>
+
+  <h1 id="baslatma">4. Kurulum ve başlatma</h1>
+  <h2>4.1 Gerekli ROS paketleri</h2>
+  <pre>sudo apt update
+sudo apt install ros-humble-navigation2 \
+  ros-humble-nav2-bringup \
+  ros-humble-robot-localization \
+  ros-humble-tf2-tools</pre>
+
+  <h2>4.2 Derleme</h2>
+  <pre>cd /home/orin/DiffDrive_Slamtoolbox
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+source install/setup.bash</pre>
+
+  <h2>4.3 Jetson Orin üzerinde lokalizasyonu başlatma</h2>
+  <pre>cd /home/orin/DiffDrive_Slamtoolbox
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch robot_bringup localization.launch.py</pre>
+  <p>Farklı bir harita kullanılacaksa:</p>
+  <pre>ros2 launch robot_bringup localization.launch.py \
+  map:=/tam/yol/harita.yaml rviz:=false</pre>
+
+  <h2>4.4 RViz'i açma</h2>
+  <pre>source /opt/ros/humble/setup.bash
+rviz2 -d /home/orin/navigation.rviz</pre>
+  <div class="warning"><b>Mevcut launch dosyası notu:</b> <code>localization.launch.py</code> içinde RViz action'ı tanımlanmış olsa da canlı inceleme anındaki <code>LaunchDescription</code> listesine eklenmemiştir. Bu yüzden raporda güvenilir yöntem olarak RViz'in ayrı komutla açılması verilmiştir. Canlı node listesinde <code>/rviz</code> zaten ayrıca çalışmaktadır.</div>
+
+  <h2>4.5 Lifecycle kontrolü</h2>
+  <pre>ros2 lifecycle get /map_server
+ros2 lifecycle get /amcl</pre>
+  <p>Her ikisinin de çıktısı <code>active [3]</code> olmalıdır. Canlı kontrolde iki düğüm de bu durumdadır.</p>
+
+  <h1 id="initialpose">5. Başlangıç pozu verme</h1>
+  <ol>
+    <li>RViz <b>Global Options → Fixed Frame</b> alanını <code>map</code> yapın.</li>
+    <li>Üst araç çubuğunda <b>2D Pose Estimate</b> aracını seçin. Araç görünmüyorsa <b>Tools → +</b> ile <code>SetInitialPose</code> ekleyin.</li>
+    <li>Haritada robotun gerçek konumuna tıklayın; basılı tutup okun ucunu robotun baktığı yöne sürükleyin.</li>
+    <li><code>/particle_cloud</code> parçacıklarının robot çevresinde toplandığını ve scan'in duvarlara oturduğunu kontrol edin.</li>
+    <li>Robotu kısa bir mesafe yavaşça ileri ve geri sürün; haritadaki hareketin fiziksel hareketle aynı yönde olduğunu doğrulayın.</li>
+  </ol>
+  <p>Bu işlem RViz'den <code>/initialpose</code> üzerine <code>geometry_msgs/msg/PoseWithCovarianceStamped</code> gönderir. Mevcut AMCL ayarında <code>set_initial_pose: false</code> olduğundan çalışma başlangıcında operatör pozu vermelidir.</p>
+  <pre># RViz yerine terminalden yaklaşık başlangıç pozu örneği
+ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
+"{header: {frame_id: map}, pose: {pose: {position: {x: 0.0, y: 0.0, z: 0.0},
+orientation: {z: 0.0, w: 1.0}}, covariance: [0.25,0,0,0,0,0, 0,0.25,0,0,0,0,
+0,0,0,0,0,0, 0,0,0,0,0,0, 0,0,0,0,0,0, 0,0,0,0,0,0.0685]}}"</pre>
+  <p class="small">Terminal örneğindeki x, y ve yön değerleri robotun gerçek harita pozuna göre değiştirilmelidir. RViz yöntemi saha kullanımı için daha pratiktir.</p>
+
+  <div class="pagebreak"></div>
+  <h1 id="tf">6. Doğru TF ağacı ve canlı kontrol</h1>
+  <h2>6.1 Beklenen ağaç</h2>
+  <pre>map                                      [AMCL]
+└── odom                                 [robot_localization EKF]
+    └── base_link
+        ├── base_footprint
+        └── chassis
+            ├── imu_link
+            ├── camera_frame
+            │   └── camera_link_optical
+            └── up_chassis
+                └── laser_frame
+
+Tekerlek linkleri, robot_state_publisher tarafından joint_states ile gövdeye bağlanır.</pre>
+
+  <h2>6.2 Canlı ölçüm</h2>
+  <table>
+    <tr><th>Dönüşüm</th><th>Canlı sonuç</th><th>Değerlendirme</th></tr>
+    <tr><td><code>map → odom</code></td><td>Öteleme yaklaşık [-0,158; 0,035; 0] m, yaw yaklaşık 1,64 rad (93,8°).</td><td>Başlangıç pozu sonrası AMCL tarafından geçerli olarak yayınlanıyor. Sayı anlık poza aittir, hedef kalibrasyon değeri değildir.</td></tr>
+    <tr><td><code>odom → base_link</code></td><td>Hareketsiz örnekte konum yaklaşık sıfır, yaw yaklaşık −0,002 rad.</td><td>EKF dönüşümü mevcut ve küçük durağan sapma gösteriyor.</td></tr>
+    <tr><td><code>base_link → chassis</code></td><td>[0,070; 0; 0] m, dönme yok.</td><td>Xacro sabit dönüşümü geçerli.</td></tr>
+    <tr><td><code>chassis → imu_link</code></td><td>Statik sensör dönüşümü mevcut.</td><td>IMU, robot modeline bağlı.</td></tr>
+    <tr><td><code>up_chassis → laser_frame</code></td><td>Bileşik olarak base_link'e göre yaklaşık [-0,065; 0; 0,172] m.</td><td>LiDAR frame'i TF ağacına bağlı.</td></tr>
+  </table>
+  <p>İlk sorguda AMCL pozu verilmeden önce kısa süreli <code>frame does not exist</code> görülebilir; başlangıç pozu sonrası dönüşüm kesintisiz alınmıştır.</p>
+
+  <h2>6.3 Kontrol komutları</h2>
+  <pre>ros2 run tf2_ros tf2_echo map odom
+ros2 run tf2_ros tf2_echo odom base_link
+ros2 run tf2_ros tf2_echo map base_link
+
+ros2 run tf2_tools view_frames
+# Çıktı: frames.pdf
+
+ros2 topic info /tf -v
+ros2 topic info /tf_static -v</pre>
+  <p>Canlı durumda <code>/tf</code> üzerinde üç yayıncı vardır: AMCL, EKF ve robot_state_publisher; bunlar farklı dönüşüm çiftlerinden sorumludur. <code>/tf_static</code> üzerinde tek yayıncı robot_state_publisher'dır. Yayıncı sayısının birden fazla olması tek başına çakışma değildir; aynı parent/child çiftinin iki ayrı node tarafından yayınlanması çakışmadır.</p>
+
+  <h1 id="topic">7. Topic ve QoS doğrulaması</h1>
+  <h2>7.1 Temel topicler</h2>
+  <table>
+    <tr><th>Topic</th><th>Tip / yayıncı</th><th>Canlı durum</th></tr>
+    <tr><td><code>/map</code></td><td><code>nav_msgs/OccupancyGrid</code> / map_server</td><td>1 yayıncı; Reliable + Transient Local.</td></tr>
+    <tr><td><code>/scan</code></td><td><code>sensor_msgs/LaserScan</code> / rplidar_node</td><td>1 yayıncı; yaklaşık 6,47 Hz; Reliable + Volatile.</td></tr>
+    <tr><td><code>/imu/data_raw</code></td><td><code>sensor_msgs/Imu</code> / serial_bridge_node</td><td>Yaklaşık 10,00 Hz.</td></tr>
+    <tr><td><code>/wheel/odometry_raw</code></td><td><code>nav_msgs/Odometry</code> / serial_bridge_node</td><td>Yaklaşık 10,00 Hz.</td></tr>
+    <tr><td><code>/odometry/filtered</code></td><td><code>nav_msgs/Odometry</code> / ekf_filter_node</td><td>1 yayıncı; yaklaşık 10,00 Hz; Reliable + Volatile.</td></tr>
+    <tr><td><code>/amcl_pose</code></td><td><code>PoseWithCovarianceStamped</code> / amcl</td><td>1 yayıncı; Reliable + Transient Local; geçerli <code>map</code> frame örneği alındı.</td></tr>
+    <tr><td><code>/particle_cloud</code></td><td><code>nav2_msgs/ParticleCloud</code> / amcl</td><td>1 yayıncı; Best Effort + Volatile; robot hareket etmezken yeni mesaj gelmemesi normal olabilir.</td></tr>
+    <tr><td><code>/robot_description</code></td><td><code>std_msgs/String</code> / robot_state_publisher</td><td>1 yayıncı; Reliable + Transient Local; yaklaşık 8679 bayt, boş değil.</td></tr>
+    <tr><td><code>/initialpose</code></td><td><code>PoseWithCovarianceStamped</code> / RViz</td><td>Başlangıç pozu komutu.</td></tr>
+  </table>
+
+  <h2>7.2 Canlı AMCL örneği</h2>
+  <p>Ölçüm anında <code>/amcl_pose</code> çıktısının frame'i <code>map</code>, pozisyonu yaklaşık x=−0,158 m, y=0,035 m ve yön quaternion'u z=0,726, w=0,688'dir. X/Y covariance diyagonal değerleri yaklaşık 0,216 ve 0,220 m²'dir. Bunlar robotun o andaki tahmini ve belirsizliğidir; sabit parametre değildir.</p>
+
+  <h2>7.3 Çalışan node'lar</h2>
+  <pre>/amcl
+/ekf_filter_node
+/lifecycle_manager_localization
+/map_server
+/robot_state_publisher
+/rplidar_node
+/serial_bridge_node
+/rviz</pre>
+  <div class="warning"><b>Nav2 durumu:</b> <code>/global_costmap/*</code>, <code>/local_costmap/*</code>, <code>/plan</code> gibi adlar topic listesinde RViz display abonelikleri nedeniyle görünebilir. Canlı node listesinde planner/controller/costmap sunucuları bulunmadığından bu durum navigasyonun aktif olduğu anlamına gelmez.</div>
+
+  <h1 id="rviz">8. RViz yapılandırması ve kullanım</h1>
+  <table>
+    <tr><th>Display / araç</th><th>Ayar</th><th>Beklenen görünüm</th></tr>
+    <tr><td>Global Options</td><td>Fixed Frame: <code>map</code></td><td>Tüm veriler kayıtlı harita koordinatında birleşir.</td></tr>
+    <tr><td>Map</td><td>Topic: <code>/map</code>; Reliability: Reliable; Durability: Transient Local</td><td>RViz map yayınından sonra açılsa bile kaydedilmiş haritayı alır.</td></tr>
+    <tr><td>RobotModel</td><td>Description Topic: <code>/robot_description</code>; Transient Local</td><td>Robot gövdesi ve bağlı linkler görünür.</td></tr>
+    <tr><td>LaserScan</td><td>Topic: <code>/scan</code>; Fixed/Decay Time ihtiyaca göre</td><td>Noktalar haritadaki duvarlara oturmalıdır.</td></tr>
+    <tr><td>TF</td><td>Frames ve Names açık</td><td><code>map → odom → base_link</code> zinciri kopuksuz görünür.</td></tr>
+    <tr><td>PoseWithCovariance</td><td>Topic: <code>/amcl_pose</code></td><td>Robot pozu ve belirsizlik elipsi.</td></tr>
+    <tr><td>ParticleCloud</td><td>Topic: <code>/particle_cloud</code>; Best Effort</td><td>Başlangıçta yaygın, eşleşme sonrası robot çevresinde yoğun parçacıklar.</td></tr>
+    <tr><td>Odometry</td><td>Topic: <code>/odometry/filtered</code></td><td>Yerel EKF hareket tahmini.</td></tr>
+    <tr><td>2D Pose Estimate</td><td>Topic: <code>/initialpose</code></td><td>AMCL başlangıç pozu vermek için kullanılır.</td></tr>
+    <tr><td>Nav2 Goal</td><td>Navigasyon aşamasında kullanılır</td><td>Planner/controller başlamadan yalnız lokalizasyon testi için gerekli değildir.</td></tr>
+  </table>
+  <p>RobotModel üzerinde her link için <code>No transform</code> görülürse önce <code>/robot_description</code> mesajının boş olmadığını, ardından <code>/joint_states</code> ve <code>/tf_static</code> yayınlarını kontrol edin. Mevcut sistemde robot_description dolu, statik TF'ler ve dört teker eklemi yayınlanmaktadır.</p>
+
+  <h1 id="uzak">9. Uzak bilgisayardan RViz</h1>
+  <p>Jetson ve laptop aynı ağda olmalı; her ikisinde aynı ROS domain kullanılmalı ve localhost kısıtı kapalı olmalıdır:</p>
+  <pre># Hem Jetson hem laptop terminalinde
+export ROS_DOMAIN_ID=30
+export ROS_LOCALHOST_ONLY=0
+source /opt/ros/humble/setup.bash</pre>
+  <p>RViz yapılandırmasını Jetson'dan laptopa kopyalama örneği:</p>
+  <pre>scp orin@JETSON_IP:/home/orin/navigation.rviz ~/navigation.rviz
+rviz2 -d ~/navigation.rviz</pre>
+  <p>Laptopta kontrol:</p>
+  <pre>ros2 node list
+ros2 topic info /map -v
+ros2 topic echo /map --once --qos-reliability reliable \
+  --qos-durability transient_local
+ros2 run tf2_ros tf2_echo map base_link</pre>
+  <div class="warning"><b>Harita topic'i görünüyor fakat RViz'de çizilmiyorsa:</b> Map display QoS'unu <b>Reliable + Transient Local</b> yapın, Fixed Frame'i <code>map</code> seçin ve AMCL başlangıç pozunu verin. Yalnız topic adını görmek, mesaj ve TF'nin uzaktaki makineye ulaştığını kanıtlamaz.</div>
+
+  <h1 id="parametre">10. AMCL parametre özeti</h1>
+  <table>
+    <tr><th>Grup</th><th>Değerler</th><th>Yorum</th></tr>
+    <tr><td>Frame ve topic</td><td><code>map</code>, <code>odom</code>, <code>base_link</code>, <code>/scan</code></td><td>Mevcut TF mimarisiyle uyumlu.</td></tr>
+    <tr><td>Hareket modeli</td><td><code>DifferentialMotionModel</code>; alpha1…alpha5 = 0,20</td><td>Diferansiyel sürüş için uygun başlangıç gürültü modeli.</td></tr>
+    <tr><td>Parçacık sayısı</td><td>min 500, max 2000; pf_err 0,05; pf_z 0,99</td><td>Doğruluk ve Jetson işlem yükü dengesi.</td></tr>
+    <tr><td>Güncelleme eşikleri</td><td>0,10 m / 0,10 rad</td><td>Robot bu eşikleri aşınca filtre güncellenir.</td></tr>
+    <tr><td>Lidar modeli</td><td>likelihood_field; 60 beam; 0,20–12,0 m</td><td>Harita uzaklık alanıyla scan olasılığı.</td></tr>
+    <tr><td>TF</td><td><code>tf_broadcast: true</code>; tolerance 0,5 s</td><td><code>map → odom</code> AMCL tarafından yayımlanır.</td></tr>
+    <tr><td>Başlangıç pozu</td><td><code>set_initial_pose: false</code></td><td>RViz ile her başlangıçta operatör pozu verilir.</td></tr>
+  </table>
+  <p>Parametreleri değiştirmeden önce saha ölçümü yapılmalıdır. Özellikle parçacık sayısını yalnızca CPU kullanımına bakarak azaltmak veya alpha değerlerini kanıtsız değiştirmek, zor koridorlarda ve simetrik alanlarda lokalizasyonu zayıflatabilir.</p>
+
+  <h1 id="sorun">11. Sorun giderme</h1>
+  <table>
+    <tr><th>Belirti</th><th>Muhtemel neden</th><th>Kontrol / çözüm</th></tr>
+    <tr><td><code>map frame does not exist</code></td><td>Başlangıç pozu verilmedi; AMCL aktif değil; scan/odom zinciri eksik.</td><td>Lifecycle durumunu kontrol edin, 2D Pose Estimate verin, <code>tf2_echo map odom</code> çalıştırın.</td></tr>
+    <tr><td>Map topic var, harita görünmüyor</td><td>RViz Map QoS durability Volatile; yanlış Fixed Frame.</td><td>Transient Local + Reliable seçin; Fixed Frame=<code>map</code>.</td></tr>
+    <tr><td>RobotModel hata ve No transform</td><td>Boş robot_description veya kopuk statik TF/joint_states.</td><td>Transient Local QoS; mesaj boyutu; RSP ve joint_states kontrolü.</td></tr>
+    <tr><td>Scan haritaya oturmuyor</td><td>Yanlış initial pose/yön, lidar TF veya odometri yön hatası.</td><td>Poz yönünü yeniden verin; <code>laser_frame</code> TF'sini ve fiziksel hareket-RViz uyumunu kontrol edin.</td></tr>
+    <tr><td>Poz sıçrıyor/dönüyor</td><td>Aynı TF çiftinde iki yayıncı veya yanlış sensör işareti.</td><td>İkinci EKF/SLAM sürecini kapatın; <code>ps</code>, node ve TF yayıncılarını kontrol edin.</td></tr>
+    <tr><td>Uzak laptopta topic var ama veri yok</td><td>Domain/ağ/QoS/Discovery sorunu.</td><td>Aynı ROS_DOMAIN_ID, ROS_LOCALHOST_ONLY=0, güvenlik duvarı ve topic echo testi.</td></tr>
+  </table>
+
+  <h2>11.1 Tanılama kaydı</h2>
+  <pre>ros2 bag record -o localization_check \
+  /map /scan /imu/data_raw /wheel/odometry_raw \
+  /odometry/filtered /amcl_pose /particle_cloud \
+  /initialpose /tf /tf_static /diagnostics</pre>
+  <p>Kayıt sırasında başlangıç pozu verin; birkaç metre düz sürün; yavaş sağ ve sol dönüş yapın; başlangıç bölgesine dönün. Scan'in duvarlara oturması ve AMCL covariance'ın tekrar küçülmesi incelenmelidir.</p>
+
+  <h1 id="kabul">12. Kabul kriterleri ve sonuç</h1>
+  <table>
+    <tr><th>Kriter</th><th>Durum</th></tr>
+    <tr><td><code>map_server</code> ve <code>amcl</code> lifecycle active</td><td class="ok">Geçti</td></tr>
+    <tr><td><code>/map</code> kalıcı QoS ile yayınlanıyor</td><td class="ok">Geçti</td></tr>
+    <tr><td>Başlangıç pozundan sonra <code>map → odom → base_link</code> zinciri mevcut</td><td class="ok">Geçti</td></tr>
+    <tr><td>Robot modeli, lidar ve IMU frame'leri ana ağaca bağlı</td><td class="ok">Geçti</td></tr>
+    <tr><td>LiDAR, IMU, wheel odometry ve EKF topicleri kararlı hızda</td><td class="ok">Geçti</td></tr>
+    <tr><td><code>/amcl_pose</code> map frame'inde geçerli çıktı veriyor</td><td class="ok">Geçti</td></tr>
+    <tr><td>RViz ve fiziksel robot hareket yönleri tutarlı</td><td class="ok">Kullanıcı saha doğrulamasıyla geçti</td></tr>
+  </table>
+  <div class="note"><b>Nihai karar:</b> Kayıtlı harita üzerinde AMCL + robot_localization lokalizasyonu başarıyla çalışmaktadır. Sistem Nav2 navigasyon entegrasyonuna geçmeye hazırdır. Navigasyon eklenirken mevcut <code>map → odom → base_link</code> sahipliği korunmalı ve localization bileşenleri ikinci kez başlatılmamalıdır.</div>
+
+  <h1 id="komut">13. Komut özeti</h1>
+  <pre># Başlat
+cd /home/orin/DiffDrive_Slamtoolbox
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch robot_bringup localization.launch.py
+
+# Ayrı RViz
+rviz2 -d /home/orin/navigation.rviz
+
+# Node ve lifecycle
+ros2 node list
+ros2 lifecycle get /map_server
+ros2 lifecycle get /amcl
+
+# Topic
+ros2 topic list -t
+ros2 topic hz /scan
+ros2 topic hz /imu/data_raw
+ros2 topic hz /wheel/odometry_raw
+ros2 topic hz /odometry/filtered
+ros2 topic info /map -v
+ros2 topic info /amcl_pose -v
+ros2 topic echo /amcl_pose --once --qos-reliability reliable \
+  --qos-durability transient_local
+
+# TF
+ros2 run tf2_ros tf2_echo map odom
+ros2 run tf2_ros tf2_echo odom base_link
+ros2 run tf2_ros tf2_echo map base_link
+ros2 run tf2_tools view_frames
+
+# Süreç çakışması kontrolü
+ps aux | grep -E "ekf_node|serial_bridge|robot_state_publisher|rplidar|amcl|map_server|slam_toolbox" | grep -v grep</pre>
+
+  <p class="small">Rapor sonu — canlı değerler 20 Eylül 2026 tarihindeki sistem durumunu temsil eder.</p>
+</body>
+</html>

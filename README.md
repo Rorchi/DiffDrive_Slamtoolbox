@@ -110,6 +110,7 @@ sudo apt install \
   ros-humble-nav2-map-server \
   ros-humble-nav2-amcl \
   ros-humble-nav2-lifecycle-manager \
+  ros-humble-nav2-rviz-plugins \
   ros-humble-teleop-twist-keyboard \
   ros-humble-xacro
 ```
@@ -267,6 +268,18 @@ ros2 run tf2_ros tf2_echo map base_link
 ```
 
 `map_server` ve `amcl` için beklenen lifecycle durumu `active [3]` değeridir.
+
+Kapsamlı navigasyon görünümünü bağımsız açmak için:
+
+```bash
+rviz2 -d \
+  ~/DiffDrive_Slamtoolbox/install/robot_bringup/share/robot_bringup/config/navigation.rviz
+```
+
+Bu görünüm AMCL başlangıç pozu ve gerçek Nav2 action hedef aracının yanında
+global/local costmap, plan, footprint, lidar, odometri ve parçacık bulutu
+görünümlerini içerir. Nav2 düğümleri henüz çalışmıyorsa ilgili costmap ve plan
+display'lerinde `No messages received` görülmesi normaldir.
 
 ## Ana topic'ler
 

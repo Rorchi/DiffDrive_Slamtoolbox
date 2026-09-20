@@ -20,6 +20,7 @@ bağımlılıklarını bu manifestten okur; derleme türü ament_python olarak s
   <exec_depend>nav2_amcl</exec_depend>
   <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_rviz_plugins</exec_depend>
   <exec_depend>rplidar_ros</exec_depend>
   <exec_depend>robot_description</exec_depend>
   <exec_depend>robot_localization</exec_depend>

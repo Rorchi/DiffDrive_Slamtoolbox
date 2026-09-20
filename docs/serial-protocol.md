@@ -6,6 +6,20 @@ ile ROS 2 köprüsünün aynı veriyi nasıl yorumlaması gerektiğini tanımlar
 
 # Arduino - Jetson seri protokolü
 
+## Hazırlanan V1 hız arayüzü (henüz devreye alınmadı)
+
+`arduino/mega2560` altındaki yeni firmware, `V1 <sol_mm_s> <sag_mm_s>\n`
+paketini kabul eder. Motor A sol, B sağ; pozitif hız ileri anlamındadır.
+Örneğin `V1 -30 30\n` sola yerinde dönüş, `V1 70 130\n` ileri-sola
+harekettir. Her tekerlek ±150 mm/s ile sınırlıdır. `S` durdurur; geçerli
+paket 500 ms gelmezse firmware PWM'yi sıfırlar. Parser LF kullanır.
+
+ROS köprüsünde `command_protocol=wheel_v1` bu biçimi etkinleştirir.
+Varsayılan `legacy` aşağıda belgelenen W/X/A/D/S arayüzünü korur. Yeni
+firmware yüklenmeden mod değiştirilmemeli; iki uç birlikte geçiş yapmalıdır.
+Firmware derlemesi ve tekerlekler havadayken yön/hız doğrulaması tamamlanmadı.
+Encoder/IMU JSON telemetrisi ve odometri işaret kalibrasyonu değiştirilmedi.
+
 ## Bağlantı
 
 Mega2560 Pro Mini kartı USB ile Jetson'a bağlanır. Jetson, ATmega2560'a
